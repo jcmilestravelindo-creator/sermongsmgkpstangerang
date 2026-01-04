@@ -15,7 +15,7 @@
     <!-- Babel untuk JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Custom Styles untuk Animasi -->
+    <!-- Custom Styles -->
     <style>
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -24,7 +24,6 @@
         .animate-fade-in-up { animation: fade-in-up 0.5s ease-out; }
         .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
         
-        /* Hide Scrollbar for cleaner UI */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -41,7 +40,7 @@
         import { 
             getFirestore, collection, addDoc, onSnapshot, 
             query, updateDoc, doc, serverTimestamp, 
-            deleteDoc, writeBatch 
+            deleteDoc, writeBatch, enableIndexedDbPersistence 
         } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { 
             getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken
@@ -53,27 +52,17 @@
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
-        let firebaseConfig;
-        let APP_ID;
-
-        // Cek Environment
-        if (typeof __firebase_config !== 'undefined') {
-            firebaseConfig = JSON.parse(__firebase_config);
-            APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'gkps-gsm-default';
-        } else {
-            // Konfigurasi Project Baru: sermongsmgkpstangerang-77b63
-            firebaseConfig = {
-                apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
-                authDomain: "sermongsmgkpstangerang-77b63.firebaseapp.com",
-                databaseURL: "https://sermongsmgkpstangerang-77b63-default-rtdb.asia-southeast1.firebasedatabase.app",
-                projectId: "sermongsmgkpstangerang-77b63",
-                storageBucket: "sermongsmgkpstangerang-77b63.firebasestorage.app",
-                messagingSenderId: "987409950584",
-                appId: "1:987409950584:web:b6792a69050f673c6eca8d",
-                measurementId: "G-GE3FRB9D54"
-            };
-            APP_ID = 'gkps-gsm-local';
-        }
+        // Menggunakan Project Custom Anda: sermongsmgkpstangerang-77b63
+        const firebaseConfig = {
+            apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
+            authDomain: "sermongsmgkpstangerang-77b63.firebaseapp.com",
+            databaseURL: "https://sermongsmgkpstangerang-77b63-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "sermongsmgkpstangerang-77b63",
+            storageBucket: "sermongsmgkpstangerang-77b63.firebasestorage.app",
+            messagingSenderId: "987409950584",
+            appId: "1:987409950584:web:b6792a69050f673c6eca8d",
+            measurementId: "G-GE3FRB9D54"
+        };
 
         // Inisialisasi Firebase
         let app, auth, db, analytics;
@@ -82,10 +71,21 @@
             analytics = getAnalytics(app);
             auth = getAuth(app);
             db = getFirestore(app);
+            
+            // Aktifkan Offline Persistence (Penting untuk HP)
+            enableIndexedDbPersistence(db).catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    console.warn('Persistence failed: Multiple tabs open');
+                } else if (err.code == 'unimplemented') {
+                    console.warn('Persistence not supported on this browser');
+                }
+            });
         } catch (e) {
             console.error("Firebase Init Error:", e);
         }
 
+        // --- SETTING KOLEKSI DATABASE ---
+        // PENTING: Gunakan nama koleksi yang SAMA PERSIS di semua device
         const COLLECTION_NAME = 'gkps_participants';
 
         // --- HELPER FUNCTIONS ---
@@ -95,7 +95,7 @@
             return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         };
 
-        // --- KOMPONEN NAVBAR (DEFINISI DI LUAR APP UNTUK MENGHINDARI ERROR) ---
+        // --- KOMPONEN NAVBAR ---
         const NavBar = ({ view, setView }) => (
             <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
                 <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
@@ -127,7 +127,6 @@
 
         // --- KOMPONEN UTAMA ---
         function App() {
-            // -- State Definitions --
             const [user, setUser] = React.useState(null);
             const [participants, setParticipants] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
@@ -150,21 +149,20 @@
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
 
-            // -- Auth Logic --
+            // -- 1. AUTHENTICATION (Koneksi Database) --
             const performLogin = async () => {
                 setIsConnecting(true);
                 setAuthError(null);
                 try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
+                    // Gunakan Anonymous Auth yang standar dan stabil
+                    await signInAnonymously(auth);
                 } catch (err) {
                     console.error("Auth Error:", err);
                     let msg = "Gagal koneksi database.";
                     if (err.code === 'auth/operation-not-allowed') {
-                        msg = "Mohon aktifkan 'Anonymous Auth' di Firebase Console Anda.";
+                        msg = "SETUP DIPERLUKAN: Masuk ke Firebase Console > Authentication > Sign-in method > Aktifkan 'Anonymous'.";
+                    } else if (err.code === 'auth/network-request-failed') {
+                        msg = "Koneksi internet bermasalah.";
                     } else {
                         msg = `Error: ${err.message}`;
                     }
@@ -176,28 +174,31 @@
 
             React.useEffect(() => {
                 if (!auth) { setLoading(false); return; }
+                
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     setLoading(false);
                     if (u) setAuthError(null);
                 });
-                performLogin();
+
+                // Coba login otomatis saat aplikasi dibuka
+                if (!auth.currentUser) {
+                    performLogin();
+                }
+
                 return () => unsubscribe();
             }, []);
 
-            // -- Data Logic --
+            // -- 2. DATA LISTENER (Sinkronisasi Real-time) --
             React.useEffect(() => {
                 if (!user || !db) return;
 
-                let q;
-                if (typeof __app_id !== 'undefined') {
-                     q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME));
-                } else {
-                     q = query(collection(db, COLLECTION_NAME));
-                }
+                // PERBAIKAN: Gunakan koleksi ROOT 'gkps_participants' agar konsisten di semua device
+                const q = query(collection(db, COLLECTION_NAME));
                 
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    // Urutkan: Hadir duluan, lalu nama
                     data.sort((a, b) => {
                         if (a.checkedIn === b.checkedIn) return a.name.localeCompare(b.name);
                         return a.checkedIn ? -1 : 1;
@@ -206,25 +207,20 @@
                 }, (error) => {
                     console.error("Snapshot Error:", error);
                     if (error.code === 'permission-denied') {
-                        setAuthError("Izin database ditolak. Cek Firestore Rules.");
+                        setAuthError("Izin database ditolak. Cek Firebase Rules.");
                     }
                 });
 
                 return () => unsubscribe();
             }, [user]);
 
-            // -- Helpers Refs --
+            // -- Helper Refs --
             const getCollectionRef = () => {
-                 if (typeof __app_id !== 'undefined') {
-                     return collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME);
-                 }
+                 // Selalu gunakan root collection
                  return collection(db, COLLECTION_NAME);
             };
 
             const getDocRef = (id) => {
-                 if (typeof __app_id !== 'undefined') {
-                     return doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, id);
-                 }
                  return doc(db, COLLECTION_NAME, id);
             };
 
@@ -241,7 +237,7 @@
 
             const addParticipant = async (e) => {
                 e.preventDefault();
-                if (!user) { alert("Sistem Offline."); return; }
+                if (!user) { alert("Menunggu koneksi..."); return; }
                 if (!newName || !newRegNum) return;
 
                 const isDuplicate = participants.some(p => p.regNum === newRegNum);
@@ -316,12 +312,10 @@
                             if (!line) continue;
                             
                             let name = line.split(',')[0].replace(/^"|"$/g, '').trim();
-                            
                             if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#') || name.startsWith('=')) continue;
 
-                            // Cek duplikat di DB yang sudah ada
+                            // Cek duplikat di DB & Batch
                             const existsInDB = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
-                            // Cek duplikat di Batch yang sedang dibuat (untuk file CSV yang punya nama ganda)
                             const existsInBatch = newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
 
                             if (!existsInDB && !existsInBatch) {
@@ -336,7 +330,7 @@
                         }
 
                         if (newParticipants.length === 0) {
-                            alert("Tidak ada data baru. (Mungkin semua nama sudah terdaftar)");
+                            alert("Tidak ada data baru (Semua duplikat).");
                             return;
                         }
 
@@ -353,7 +347,7 @@
                             processed += chunk.length;
                         }
 
-                        alert(`Berhasil import ${processed} peserta.`);
+                        alert(`Sukses import ${processed} peserta.`);
                     } catch (err) {
                         alert("Gagal Import: " + err.message);
                     } finally {
@@ -381,7 +375,7 @@
             const handleCheckIn = async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
                 
-                // Normalisasi input: Hapus spasi dan jadikan huruf besar
+                // Normalisasi: Hapus spasi dan uppercase agar cocok
                 const cleanInput = regNumInput.trim().toUpperCase();
                 
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
@@ -406,7 +400,6 @@
 
             const findMyQR = (e) => {
                 e.preventDefault();
-                // Normalisasi input: Hapus spasi dan jadikan huruf besar
                 const cleanInput = myRegLogin.trim().toUpperCase();
                 const found = participants.find(p => p.regNum.toUpperCase() === cleanInput);
                 
@@ -414,15 +407,15 @@
                 else alert('Nomor Registrasi tidak ditemukan. Pastikan format benar (contoh: GSM-1234)');
             };
 
-            // -- RENDER HELPERS --
+            // -- RENDER --
             if (loading) return (
                 <div className="flex flex-col h-screen items-center justify-center bg-gray-50">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                    <p className="text-gray-500">Memuat Sistem...</p>
+                    <p className="text-gray-500">Menghubungkan ke Database...</p>
                 </div>
             );
 
-            // ADMIN RENDER
+            // ADMIN VIEW
             const renderAdmin = () => {
                 if (!isAdmin) {
                     return (
@@ -457,26 +450,17 @@
 
                         {authError && (
                             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6 shadow-sm">
-                                <div className="flex items-start gap-3">
-                                    <AlertCircle size={24} className="mt-0.5 shrink-0" />
-                                    <div className="flex-1">
-                                        <p className="font-bold text-sm uppercase tracking-wide">Status: Terputus</p>
-                                        <p className="text-sm mt-1">{authError}</p>
-                                        {!user && (
-                                            <button 
-                                                onClick={performLogin} 
-                                                disabled={isConnecting}
-                                                className="mt-3 text-xs bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2 w-fit font-semibold transition"
-                                            >
-                                                {isConnecting ? <ReloadIcon className="animate-spin" size={14} /> : 'Coba Hubungkan Ulang'}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
+                                <p className="font-bold text-sm uppercase">Status: Terputus</p>
+                                <p className="text-sm mt-1">{authError}</p>
+                                {!user && (
+                                    <button onClick={performLogin} disabled={isConnecting} className="mt-3 text-xs bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 w-fit">
+                                        {isConnecting ? 'Menghubungkan...' : 'Hubungkan Ulang'}
+                                    </button>
+                                )}
                             </div>
                         )}
 
-                        <div className={`p-4 rounded-xl mb-6 flex justify-between items-center transition-colors ${isSessionOpen ? 'bg-green-100 border border-green-300' : 'bg-red-100 border border-red-300'}`}>
+                        <div className={`p-4 rounded-xl mb-6 flex justify-between items-center ${isSessionOpen ? 'bg-green-100 border-green-300' : 'bg-red-100 border-red-300'} border`}>
                             <div>
                                 <h3 className="font-bold text-gray-800">Sesi Absensi: {isSessionOpen ? 'DIBUKA' : 'DITUTUP'}</h3>
                                 <p className="text-xs text-gray-600">{isSessionOpen ? 'Peserta bisa scan.' : 'Peserta ditolak.'}</p>
