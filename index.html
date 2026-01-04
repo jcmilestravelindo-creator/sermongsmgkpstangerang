@@ -19,11 +19,8 @@
     <style>
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes bounce-short { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
         .animate-fade-in { animation: fade-in 0.5s ease-out; }
         .animate-fade-in-up { animation: fade-in-up 0.5s ease-out; }
-        .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
-        
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -34,24 +31,22 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        // --- IMPORT MODULES ---
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
-        import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-analytics.js';
         import { 
             getFirestore, collection, addDoc, onSnapshot, 
             query, updateDoc, doc, serverTimestamp, 
             deleteDoc, writeBatch, enableIndexedDbPersistence 
         } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { 
-            getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken
+            getAuth, signInAnonymously, onAuthStateChanged 
         } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, Database
         } from 'https://esm.sh/lucide-react@0.292.0';
 
-        // --- KONFIGURASI FIREBASE ---
+        // --- KONFIGURASI FIREBASE PROJECT BARU ---
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
             authDomain: "sermongsmgkpstangerang-77b63.firebaseapp.com",
@@ -63,36 +58,25 @@
             measurementId: "G-GE3FRB9D54"
         };
 
-        // Inisialisasi Firebase
-        let app, auth, db, analytics;
-        try {
-            app = initializeApp(firebaseConfig);
-            analytics = getAnalytics(app);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            
-            // Aktifkan Offline Persistence (Penting untuk HP agar data tersimpan lokal)
-            enableIndexedDbPersistence(db).catch((err) => {
-                if (err.code == 'failed-precondition') {
-                    console.warn('Persistence failed: Multiple tabs open');
-                } else if (err.code == 'unimplemented') {
-                    console.warn('Persistence not supported on this browser');
-                }
-            });
-        } catch (e) {
-            console.error("Firebase Init Error:", e);
-        }
+        // Inisialisasi
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Aktifkan Offline Persistence agar HP tetap jalan walau internet lemot
+        enableIndexedDbPersistence(db).catch((err) => {
+            console.log("Persistence warning:", err.code);
+        });
 
         const COLLECTION_NAME = 'gkps_participants';
 
-        // --- HELPER FUNCTIONS ---
         const formatTime = (timestamp) => {
             if (!timestamp) return '-';
             const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
             return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         };
 
-        // --- KOMPONEN NAVBAR ---
+        // --- KOMPONEN NAVBAR (Dipisah agar tidak error ReferenceError) ---
         const NavBar = ({ view, setView }) => (
             <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
                 <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
@@ -122,7 +106,7 @@
             </nav>
         );
 
-        // --- KOMPONEN UTAMA ---
+        // --- APP UTAMA ---
         function App() {
             const [user, setUser] = React.useState(null);
             const [participants, setParticipants] = React.useState([]);
@@ -140,31 +124,26 @@
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
             const [searchQuery, setSearchQuery] = React.useState('');
-            
-            // Perbaikan State Pencarian QR
             const [myRegLogin, setMyRegLogin] = React.useState('');
             const [myParticipantData, setMyParticipantData] = React.useState(null);
-            const [searchResults, setSearchResults] = React.useState([]); // Untuk hasil pencarian ganda
-            
+            const [searchResults, setSearchResults] = React.useState([]); 
             const [scanInput, setScanInput] = React.useState('');
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
 
-            // -- 1. AUTHENTICATION --
+            // --- 1. KONEKSI & AUTH ---
             const performLogin = async () => {
                 setIsConnecting(true);
                 setAuthError(null);
                 try {
                     await signInAnonymously(auth);
                 } catch (err) {
-                    console.error("Auth Error:", err);
-                    let msg = "Gagal koneksi database.";
+                    console.error("Auth:", err);
+                    let msg = "Gagal Login.";
                     if (err.code === 'auth/operation-not-allowed') {
-                        msg = "SETUP DIPERLUKAN: Masuk ke Firebase Console > Authentication > Sign-in method > Aktifkan 'Anonymous'.";
+                        msg = "ERROR KRITIS: Masuk ke Firebase Console > Authentication > Sign-in Method > Aktifkan 'Anonymous'!";
                     } else if (err.code === 'auth/network-request-failed') {
-                        msg = "Koneksi internet bermasalah.";
-                    } else {
-                        msg = `Error: ${err.message}`;
+                        msg = "Koneksi internet terputus.";
                     }
                     setAuthError(msg);
                 } finally {
@@ -173,7 +152,6 @@
             };
 
             React.useEffect(() => {
-                if (!auth) { setLoading(false); return; }
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     setLoading(false);
@@ -183,34 +161,35 @@
                 return () => unsubscribe();
             }, []);
 
-            // -- 2. DATA LISTENER --
+            // --- 2. SINKRONISASI DATA ---
             React.useEffect(() => {
-                if (!user || !db) return;
-                
+                // Selalu gunakan koleksi root agar Laptop & HP baca data yang sama
                 const q = query(collection(db, COLLECTION_NAME));
                 
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    // Deteksi jika data berasal dari cache (belum terkirim ke server)
+                    if (snapshot.metadata.hasPendingWrites) {
+                        console.log("Menunggu sinkronisasi ke server...");
+                    }
+
                     data.sort((a, b) => {
                         if (a.checkedIn === b.checkedIn) return a.name.localeCompare(b.name);
                         return a.checkedIn ? -1 : 1;
                     });
                     setParticipants(data);
                 }, (error) => {
-                    console.error("Snapshot Error:", error);
+                    console.error("Snapshot:", error);
                     if (error.code === 'permission-denied') {
-                        setAuthError("Izin database ditolak. Cek Firebase Rules.");
+                        setAuthError("IZIN DITOLAK: Periksa 'Rules' di Firebase Console Anda.");
                     }
                 });
 
                 return () => unsubscribe();
-            }, [user]);
+            }, []);
 
-            // -- Helper Refs --
-            const getCollectionRef = () => collection(db, COLLECTION_NAME);
-            const getDocRef = (id) => doc(db, COLLECTION_NAME, id);
-
-            // -- Admin Functions --
+            // --- 3. FUNGSI ADMIN ---
             const handleAdminLogin = (e) => {
                 e.preventDefault();
                 if (adminPin === '1234') {
@@ -223,14 +202,15 @@
 
             const addParticipant = async (e) => {
                 e.preventDefault();
-                if (!user) { alert("Menunggu koneksi..."); return; }
+                if (!user) { alert("Belum terhubung ke database!"); return; }
                 if (!newName || !newRegNum) return;
 
-                const isDuplicate = participants.some(p => p.regNum === newRegNum);
-                if (isDuplicate) { alert('Nomor Registrasi sudah ada!'); return; }
+                if (participants.some(p => p.regNum === newRegNum)) {
+                    alert('Nomor Registrasi sudah ada!'); return; 
+                }
 
                 try {
-                    await addDoc(getCollectionRef(), {
+                    await addDoc(collection(db, COLLECTION_NAME), {
                         name: newName,
                         regNum: newRegNum,
                         checkedIn: false,
@@ -239,18 +219,19 @@
                     setNewName('');
                     setNewRegNum('');
                 } catch (error) {
-                    alert("Gagal menambah: " + error.message);
+                    alert("Gagal menyimpan: " + error.message);
                 }
             };
 
             const deleteParticipant = async (id) => {
                 if (!confirm('Hapus peserta ini?')) return;
-                try { await deleteDoc(getDocRef(id)); } catch (e) { alert("Gagal hapus."); }
+                try { await deleteDoc(doc(db, COLLECTION_NAME, id)); } catch (e) { alert("Gagal hapus."); }
             };
 
             const resetAttendance = async () => {
                 if (!user) return;
                 if (!confirm('RESET SEMUA KEHADIRAN?')) return;
+                
                 setImporting(true);
                 try {
                     const checkedInIds = participants.filter(p => p.checkedIn).map(p => p.id);
@@ -259,18 +240,21 @@
                         setImporting(false);
                         return;
                     }
-                    const chunkSize = 450;
+
+                    // Batching 400 items
+                    const chunkSize = 400;
                     for (let i = 0; i < checkedInIds.length; i += chunkSize) {
                         const chunk = checkedInIds.slice(i, i + chunkSize);
                         const batch = writeBatch(db);
                         chunk.forEach(id => {
-                            batch.update(getDocRef(id), { checkedIn: false, checkInTime: null });
+                            batch.update(doc(db, COLLECTION_NAME, id), { checkedIn: false, checkInTime: null });
                         });
                         await batch.commit();
                     }
-                    alert(`Berhasil reset ${checkedInIds.length} peserta.`);
+                    alert(`Sukses reset ${checkedInIds.length} peserta.`);
                 } catch (e) {
-                    alert("Error reset: " + e.message);
+                    console.error(e);
+                    alert("Gagal Reset! Cek Permission Rules di Firebase Console.\nError: " + e.message);
                 } finally {
                     setImporting(false);
                 }
@@ -288,39 +272,52 @@
                     try {
                         const lines = event.target.result.split(/\r\n|\n/);
                         const newParticipants = [];
-                        for (let i = 0; i < lines.length; i++) {
-                            const line = lines[i].trim();
+                        
+                        for (let line of lines) {
+                            line = line.trim();
                             if (!line) continue;
-                            let name = line.split(',')[0].replace(/^"|"$/g, '').trim();
+                            const cols = line.split(',');
+                            let name = cols[0] ? cols[0].replace(/^"|"$/g, '').trim() : '';
+                            
                             if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#') || name.startsWith('=')) continue;
 
-                            const existsInDB = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
-                            const existsInBatch = newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
+                            // Cek Duplikat di DB & Batch
+                            const exists = participants.some(p => p.name.toLowerCase() === name.toLowerCase()) || 
+                                           newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
 
-                            if (!existsInDB && !existsInBatch) {
-                                let uniqueReg = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
-                                newParticipants.push({ name: name, regNum: uniqueReg, checkedIn: false, checkInTime: null });
+                            if (!exists) {
+                                newParticipants.push({
+                                    name: name,
+                                    regNum: `GSM-${Math.floor(1000 + Math.random() * 9000)}`,
+                                    checkedIn: false,
+                                    checkInTime: null
+                                });
                             }
                         }
+
                         if (newParticipants.length === 0) {
-                            alert("Tidak ada data baru (Mungkin duplikat).");
+                            alert("Tidak ada data baru.");
+                            setImporting(false);
                             return;
                         }
+
+                        // Batch Write
                         let processed = 0;
-                        const chunkSize = 450;
+                        const chunkSize = 400;
                         for (let i = 0; i < newParticipants.length; i += chunkSize) {
                             const chunk = newParticipants.slice(i, i + chunkSize);
                             const batch = writeBatch(db);
                             chunk.forEach(data => {
-                                const newDocRef = doc(getCollectionRef());
-                                batch.set(newDocRef, data);
+                                const newRef = doc(collection(db, COLLECTION_NAME));
+                                batch.set(newRef, data);
                             });
                             await batch.commit();
                             processed += chunk.length;
                         }
                         alert(`Sukses import ${processed} peserta.`);
                     } catch (err) {
-                        alert("Gagal Import: " + err.message);
+                        console.error(err);
+                        alert("Gagal Import! Database menolak penyimpanan.\nPastikan Firestore Rules diatur ke 'allow write: if true;'\nError: " + err.message);
                     } finally {
                         setImporting(false);
                         e.target.value = null;
@@ -342,7 +339,7 @@
                 a.click();
             };
 
-            // -- User Functions --
+            // --- 4. FUNGSI USER ---
             const handleCheckIn = async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
                 const cleanInput = regNumInput.trim().toUpperCase();
@@ -352,51 +349,44 @@
                 if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
 
                 try {
-                    await updateDoc(getDocRef(participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
+                    await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
                     setScanStatus('success'); setScannedName(participant.name); setScanInput('');
                 } catch (e) { setScanStatus('error'); }
             };
 
-            // LOGIKA PENCARIAN QR YANG DIPERBAIKI
             const findMyQR = (e) => {
                 e.preventDefault();
                 const cleanInput = myRegLogin.trim().toLowerCase();
-                
-                if (!cleanInput) {
-                    alert('Harap masukkan Nama atau Nomor Registrasi.');
-                    return;
-                }
+                if(!cleanInput) return;
 
-                // Cari berdasarkan RegNum (Exact Match) ATAU Nama (Partial Match)
+                // Cari yang cocok (Nama atau RegNum)
                 const matches = participants.filter(p => 
                     p.regNum.toLowerCase() === cleanInput || 
                     p.name.toLowerCase().includes(cleanInput)
                 );
                 
                 if (matches.length === 0) {
-                    alert('Data tidak ditemukan. Pastikan nama/nomor benar.');
+                    alert('Tidak ditemukan.');
                     setSearchResults([]);
                     setMyParticipantData(null);
                 } else if (matches.length === 1) {
-                    // Jika cuma 1 hasil, langsung tampilkan
                     setMyParticipantData(matches[0]);
                     setSearchResults([]);
                 } else {
-                    // Jika lebih dari 1, minta user memilih
                     setSearchResults(matches);
                     setMyParticipantData(null);
                 }
             };
 
-            // -- RENDER HELPERS --
+            // --- RENDER ---
             if (loading) return (
                 <div className="flex flex-col h-screen items-center justify-center bg-gray-50">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                    <p className="text-gray-500">Menghubungkan ke Database...</p>
+                    <p className="text-gray-500">Memuat Sistem...</p>
                 </div>
             );
 
-            // ADMIN VIEW
+            // Tampilan ADMIN
             const renderAdmin = () => {
                 if (!isAdmin) {
                     return (
@@ -404,11 +394,10 @@
                             <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center">
                                 <Lock className="w-12 h-12 text-blue-600 mx-auto mb-4" />
                                 <h2 className="text-2xl font-bold mb-2">Akses Admin</h2>
-                                <p className="text-gray-500 mb-6">Masukkan PIN: 1234</p>
                                 <form onSubmit={handleAdminLogin}>
                                     <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center text-lg tracking-widest" placeholder="PIN" />
-                                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">Masuk Dashboard</button>
+                                        className="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center text-lg tracking-widest" placeholder="PIN: 1234" />
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">Masuk</button>
                                 </form>
                             </div>
                         </div>
@@ -421,73 +410,65 @@
                     <div className="p-4 pb-24 max-w-4xl mx-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h1 className="text-2xl font-bold text-gray-800">Dashboard Admin</h1>
-                            <div className="flex items-center gap-3">
-                                <span className={`flex items-center gap-1 text-xs px-3 py-1 rounded-full ${user ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                    {user ? <Wifi size={12}/> : <WifiOff size={12}/>} {user ? 'Online' : 'Offline'}
+                            <div className="flex items-center gap-2">
+                                <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${user ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {user ? <Wifi size={12}/> : <WifiOff size={12}/>}
                                 </span>
-                                <button onClick={() => setIsAdmin(false)} className="text-red-500 flex items-center gap-1 text-sm font-medium ml-2"><LogOut size={16} /> Logout</button>
+                                <button onClick={() => setIsAdmin(false)} className="text-red-500 text-sm font-medium"><LogOut size={16} /></button>
                             </div>
                         </div>
 
                         {authError && (
                             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6 shadow-sm">
-                                <p className="font-bold text-sm uppercase">Status: Terputus</p>
-                                <p className="text-sm mt-1">{authError}</p>
-                                {!user && (
-                                    <button onClick={performLogin} disabled={isConnecting} className="mt-3 text-xs bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 w-fit">
-                                        {isConnecting ? 'Menghubungkan...' : 'Hubungkan Ulang'}
-                                    </button>
-                                )}
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle size={24} className="mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-bold text-sm uppercase">KONEKSI BERMASALAH</p>
+                                        <p className="text-sm mt-1">{authError}</p>
+                                        {!user && (
+                                            <button onClick={performLogin} disabled={isConnecting} className="mt-2 text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
+                                                {isConnecting ? 'Menghubungkan...' : 'Coba Lagi'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
 
                         <div className={`p-4 rounded-xl mb-6 flex justify-between items-center ${isSessionOpen ? 'bg-green-100 border-green-300' : 'bg-red-100 border-red-300'} border`}>
                             <div>
                                 <h3 className="font-bold text-gray-800">Sesi Absensi: {isSessionOpen ? 'DIBUKA' : 'DITUTUP'}</h3>
-                                <p className="text-xs text-gray-600">{isSessionOpen ? 'Peserta bisa scan.' : 'Peserta ditolak.'}</p>
+                                <p className="text-xs text-gray-600">{isSessionOpen ? 'Peserta bisa check-in.' : 'Check-in ditolak.'}</p>
                             </div>
                             <button onClick={() => setIsSessionOpen(!isSessionOpen)} className={`px-4 py-2 rounded-lg font-semibold text-white ${isSessionOpen ? 'bg-green-600' : 'bg-red-600'}`}>{isSessionOpen ? 'Tutup' : 'Buka'}</button>
                         </div>
 
-                        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
-                            <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Tambah Manual</h3>
-                            <form onSubmit={addParticipant} className="flex flex-col md:flex-row gap-3">
-                                <input className="flex-1 p-2 border border-gray-300 rounded-lg" placeholder="Nama" value={newName} onChange={e => setNewName(e.target.value)} />
-                                <input className="md:w-48 p-2 border border-gray-300 rounded-lg" placeholder="No. Reg (Unik)" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} />
-                                <button type="submit" disabled={!user} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">Tambah</button>
-                            </form>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-gray-100 rounded-xl border border-gray-200">
-                            <h3 className="w-full text-xs font-bold text-gray-500 uppercase mb-2">Tools</h3>
-                            <button onClick={downloadCSV} className="flex items-center gap-2 bg-white text-gray-700 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50"><Download size={16} /> CSV</button>
-                            <div className="border-l border-gray-300 h-6 mx-1"></div>
-                            <button onClick={() => fileInputRef.current.click()} disabled={importing || !user} className={`flex items-center gap-2 text-white px-3 py-2 rounded-lg text-sm font-semibold transition ${importing ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
-                                <FileUp size={16} /> {importing ? 'Memproses...' : 'Import CSV'}
+                        <div className="flex flex-wrap gap-2 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                            <button onClick={downloadCSV} className="flex items-center gap-1 bg-white text-gray-700 border px-3 py-2 rounded-lg text-sm hover:bg-gray-50"><Download size={16} /> CSV</button>
+                            <button onClick={() => fileInputRef.current.click()} disabled={importing || !user} className={`flex items-center gap-1 text-white px-3 py-2 rounded-lg text-sm font-semibold ${importing ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+                                <FileUp size={16} /> {importing ? '...' : 'Import'}
                             </button>
-                            <div className="flex-1"></div>
-                            <button onClick={resetAttendance} disabled={!user || importing} className="flex items-center gap-2 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-lg text-sm hover:bg-red-50">
+                            <button onClick={resetAttendance} disabled={!user || importing} className="flex items-center gap-1 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-lg text-sm hover:bg-red-50 ml-auto">
                                 {importing ? <ReloadIcon className="animate-spin" size={16} /> : <RefreshCw size={16} />} Reset
                             </button>
                         </div>
 
                         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="p-4 border-b border-gray-100 relative">
-                                <Search className="absolute left-3 top-6 text-gray-400" size={18} />
-                                <input className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg" placeholder="Cari nama..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                            <div className="p-3 border-b border-gray-100 relative">
+                                <Search className="absolute left-3 top-5 text-gray-400" size={18} />
+                                <input className="w-full pl-10 pr-4 py-2 bg-gray-50 border rounded-lg" placeholder="Cari..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                             </div>
                             <div className="max-h-[400px] overflow-y-auto">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50 text-gray-600 font-medium"><tr><th className="p-3">Nama</th><th className="p-3 text-center">Status</th><th className="p-3 text-right">Aksi</th></tr></thead>
+                                    <thead className="bg-gray-50 font-medium"><tr><th className="p-3">Nama</th><th className="p-3 text-center">Status</th><th className="p-3 text-right">#</th></tr></thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {filteredList.map(p => (
                                             <tr key={p.id} className="hover:bg-gray-50">
                                                 <td className="p-3"><div className="font-semibold">{p.name}</div><div className="text-xs text-gray-500">{p.regNum}</div></td>
                                                 <td className="p-3 text-center">{p.checkedIn ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Hadir: {formatTime(p.checkInTime)}</span> : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Belum</span>}</td>
-                                                <td className="p-3 text-right"><button onClick={() => deleteParticipant(p.id)} className="text-red-500 p-2 hover:bg-red-50 rounded"><Trash2 size={16} /></button></td>
+                                                <td className="p-3 text-right"><button onClick={() => deleteParticipant(p.id)} className="text-red-500 p-1 hover:bg-red-50 rounded"><Trash2 size={16} /></button></td>
                                             </tr>
                                         ))}
-                                        {filteredList.length === 0 && <tr><td colSpan={3} className="p-4 text-center text-gray-400">Data kosong</td></tr>}
                                     </tbody>
                                 </table>
                             </div>
@@ -496,6 +477,7 @@
                 );
             };
 
+            // Tampilan SCANNER
             const renderScanner = () => (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto">
                     <h2 className="text-2xl font-bold mb-6 text-gray-800">Scan Absensi</h2>
@@ -510,13 +492,14 @@
                             <button onClick={() => handleCheckIn(scanInput)} className="w-full mt-2 bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Check-In</button>
                         </div>
                     </div>
-                    {scanStatus === 'success' && <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3 animate-bounce-short"><CheckCircle className="w-6 h-6" /><div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div></div>}
-                    {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName} sudah ada.</p></div></div>}
+                    {scanStatus === 'success' && <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3"><CheckCircle className="w-6 h-6" /><div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div></div>}
+                    {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName}</p></div></div>}
                     {scanStatus === 'error' && <div className="w-full bg-red-100 border border-red-400 text-red-800 px-4 py-3 rounded-xl flex items-center gap-3"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Gagal</p><p className="text-sm">Data tidak ditemukan.</p></div></div>}
                     {scanStatus === 'closed' && <div className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl flex items-center gap-3"><Lock className="w-6 h-6" /><div><p className="font-bold">Absensi Ditutup</p><p className="text-sm">Hubungi Admin.</p></div></div>}
                 </div>
             );
 
+            // Tampilan MY QR (DIPERBAIKI: Pencarian Ganda)
             const renderMyQr = () => (
                 <div className="flex flex-col items-center min-h-[80vh] p-6 max-w-md mx-auto">
                     <h2 className="text-2xl font-bold mb-2 text-gray-800">QR Code Saya</h2>
@@ -524,29 +507,22 @@
                     {!myParticipantData && searchResults.length === 0 && (
                         <div className="w-full bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
                             <label className="block text-sm font-medium text-gray-700 mb-2">Nama atau Nomor Registrasi</label>
-                            <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4" placeholder="Contoh: Budi atau GSM-1234" />
-                            <button onClick={findMyQR} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">Cari QR Saya</button>
+                            <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4" placeholder="Contoh: Budi" />
+                            <button onClick={findMyQR} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">Cari</button>
                         </div>
                     )}
 
                     {searchResults.length > 0 && (
                         <div className="w-full bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
                             <h3 className="font-bold text-lg mb-4 text-center">Pilih Nama Anda:</h3>
-                            <div className="space-y-2">
+                            <div className="space-y-2 max-h-60 overflow-y-auto">
                                 {searchResults.map(p => (
-                                    <button 
-                                        key={p.id}
-                                        onClick={() => { setMyParticipantData(p); setSearchResults([]); }}
-                                        className="w-full text-left p-3 rounded-lg border hover:bg-blue-50 hover:border-blue-300 flex justify-between items-center transition"
-                                    >
+                                    <button key={p.id} onClick={() => { setMyParticipantData(p); setSearchResults([]); }}
+                                        className="w-full text-left p-3 rounded-lg border hover:bg-blue-50 flex justify-between items-center transition">
                                         <div className="flex items-center gap-3">
                                             <div className="bg-blue-100 p-2 rounded-full"><User size={16} className="text-blue-600"/></div>
-                                            <div>
-                                                <p className="font-bold text-gray-800">{p.name}</p>
-                                                <p className="text-xs text-gray-500">{p.regNum}</p>
-                                            </div>
+                                            <div><p className="font-bold text-gray-800">{p.name}</p><p className="text-xs text-gray-500">{p.regNum}</p></div>
                                         </div>
-                                        <div className="text-gray-400">&rarr;</div>
                                     </button>
                                 ))}
                             </div>
@@ -570,6 +546,7 @@
                 </div>
             );
 
+            // Tampilan LIVE
             const renderLive = () => {
                 const checkedInList = participants.filter(p => p.checkedIn);
                 return (
