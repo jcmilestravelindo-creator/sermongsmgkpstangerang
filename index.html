@@ -43,7 +43,7 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, Database
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
@@ -121,12 +121,8 @@
             
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
-            
-            // Form State (Ditambah Kelas)
             const [newName, setNewName] = React.useState('');
-            const [newKelas, setNewKelas] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
-            
             const [searchQuery, setSearchQuery] = React.useState('');
             const [myRegLogin, setMyRegLogin] = React.useState('');
             const [myParticipantData, setMyParticipantData] = React.useState(null);
@@ -135,7 +131,7 @@
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
 
-            // --- 1. KONEKSI & AUTH ---
+            // -- 1. AUTHENTICATION --
             const performLogin = async () => {
                 setIsConnecting(true);
                 setAuthError(null);
@@ -145,9 +141,9 @@
                     console.error("Auth:", err);
                     let msg = "Gagal Login.";
                     if (err.code === 'auth/operation-not-allowed') {
-                        msg = "ERROR KRITIS: Masuk ke Firebase Console > Authentication > Sign-in Method > Aktifkan 'Anonymous'!";
-                    } else if (err.code === 'auth/network-request-failed') {
-                        msg = "Koneksi internet terputus.";
+                        msg = "WAJIB: Aktifkan 'Anonymous' di Firebase Console > Authentication.";
+                    } else {
+                        msg = `Error: ${err.message}`;
                     }
                     setAuthError(msg);
                 } finally {
@@ -158,16 +154,20 @@
             React.useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
-                    setLoading(false);
+                    setLoading(false); // Stop loading setelah status auth jelas
                     if (u) setAuthError(null);
                 });
                 if (!auth.currentUser) performLogin();
                 return () => unsubscribe();
             }, []);
 
-            // --- 2. SINKRONISASI DATA ---
+            // -- 2. SINKRONISASI DATA --
             React.useEffect(() => {
+                // FIX: Jangan load data jika user belum terautentikasi (mencegah error permission)
+                if (!user) return;
+
                 const q = query(collection(db, COLLECTION_NAME));
+                
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     data.sort((a, b) => {
@@ -176,13 +176,20 @@
                     });
                     setParticipants(data);
                 }, (error) => {
-                    console.error("Snapshot:", error);
-                    if (error.code === 'permission-denied') setAuthError("IZIN DITOLAK: Periksa 'Rules' di Firebase.");
+                    console.error("Snapshot Error:", error);
+                    if (error.code === 'permission-denied') {
+                        setAuthError("ERROR IZIN DATABASE: Buka Firebase Console > Firestore Database > Rules. Ubah menjadi: allow read, write: if true;");
+                    }
                 });
-                return () => unsubscribe();
-            }, []);
 
-            // --- 3. FUNGSI ADMIN ---
+                return () => unsubscribe();
+            }, [user]); // FIX: Dependency ke [user] agar re-run setelah login
+
+            // -- Helper Refs --
+            const getCollectionRef = () => collection(db, COLLECTION_NAME);
+            const getDocRef = (id) => doc(db, COLLECTION_NAME, id);
+
+            // -- Admin Functions --
             const handleAdminLogin = (e) => {
                 e.preventDefault();
                 if (adminPin === '1234') {
@@ -198,22 +205,20 @@
                 if (!user) { alert("Belum terhubung ke database!"); return; }
                 if (!newName || !newRegNum) return;
 
-                if (participants.some(p => p.regNum === newRegNum)) {
-                    alert('Nomor Registrasi sudah ada!'); return; 
-                }
+                const isDuplicate = participants.some(p => p.regNum === newRegNum);
+                if (isDuplicate) { alert('Nomor Registrasi sudah ada!'); return; }
 
                 try {
-                    await addDoc(collection(db, COLLECTION_NAME), {
+                    await addDoc(getCollectionRef(), {
                         name: newName,
                         regNum: newRegNum,
                         category: "Manual",
-                        kelas: newKelas || "-",
+                        kelas: "-",
                         checkedIn: false,
                         checkInTime: null
                     });
                     setNewName('');
                     setNewRegNum('');
-                    setNewKelas('');
                 } catch (error) {
                     alert("Gagal menyimpan: " + error.message);
                 }
@@ -221,7 +226,7 @@
 
             const deleteParticipant = async (id) => {
                 if (!confirm('Hapus peserta ini?')) return;
-                try { await deleteDoc(doc(db, COLLECTION_NAME, id)); } catch (e) { alert("Gagal hapus."); }
+                try { await deleteDoc(getDocRef(id)); } catch (e) { alert("Gagal hapus."); }
             };
 
             const resetAttendance = async () => {
@@ -239,7 +244,7 @@
                     for (let i = 0; i < checkedInIds.length; i += chunkSize) {
                         const chunk = checkedInIds.slice(i, i + chunkSize);
                         const batch = writeBatch(db);
-                        chunk.forEach(id => batch.update(doc(db, COLLECTION_NAME, id), { checkedIn: false, checkInTime: null }));
+                        chunk.forEach(id => batch.update(getDocRef(id), { checkedIn: false, checkInTime: null }));
                         await batch.commit();
                     }
                     alert(`Sukses reset ${checkedInIds.length} peserta.`);
@@ -250,7 +255,6 @@
                 }
             };
 
-            // MODIFIKASI: Import CSV untuk membaca kolom Nama, Kategori, Kelas
             const handleImportCSV = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -269,18 +273,16 @@
                             if (!line) continue;
                             const cols = line.split(',');
                             
-                            // Ambil Data Sesuai Struktur: Nama, Kategori, Kelas
                             let name = cols[0] ? cols[0].replace(/^"|"$/g, '').trim() : '';
                             let kategori = cols[1] ? cols[1].replace(/^"|"$/g, '').trim() : '';
                             let kelas = cols[2] ? cols[2].replace(/^"|"$/g, '').trim() : '';
                             
                             if (!name || name.toLowerCase().includes('nama gsm') || name.startsWith('#') || name.startsWith('=')) continue;
 
-                            // Cek Duplikat
-                            const exists = participants.some(p => p.name.toLowerCase() === name.toLowerCase()) || 
-                                           newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
+                            const existsInDB = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
+                            const existsInBatch = newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
 
-                            if (!exists) {
+                            if (!existsInDB && !existsInBatch) {
                                 newParticipants.push({
                                     name: name,
                                     category: kategori || "-",
@@ -298,7 +300,6 @@
                             return;
                         }
 
-                        // Batch Write
                         let processed = 0;
                         const chunkSize = 400;
                         for (let i = 0; i < newParticipants.length; i += chunkSize) {
@@ -335,7 +336,7 @@
                 a.click();
             };
 
-            // --- 4. FUNGSI USER ---
+            // -- User Functions --
             const handleCheckIn = async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
                 const cleanInput = regNumInput.trim().toUpperCase();
@@ -373,7 +374,7 @@
                 }
             };
 
-            // --- RENDER ---
+            // -- RENDER --
             if (loading) return (
                 <div className="flex flex-col h-screen items-center justify-center bg-gray-50">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
@@ -415,13 +416,18 @@
 
                         {authError && (
                             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6 shadow-sm">
-                                <p className="font-bold text-sm uppercase">Status: Terputus</p>
-                                <p className="text-sm mt-1">{authError}</p>
-                                {!user && (
-                                    <button onClick={performLogin} disabled={isConnecting} className="mt-2 text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
-                                        {isConnecting ? 'Menghubungkan...' : 'Hubungkan Ulang'}
-                                    </button>
-                                )}
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle size={24} className="mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-bold text-sm uppercase">KONEKSI BERMASALAH</p>
+                                        <p className="text-sm mt-1">{authError}</p>
+                                        {!user && (
+                                            <button onClick={performLogin} disabled={isConnecting} className="mt-2 text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
+                                                {isConnecting ? 'Menghubungkan...' : 'Coba Lagi'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
 
