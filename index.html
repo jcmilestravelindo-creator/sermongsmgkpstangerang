@@ -39,7 +39,7 @@
         import { 
             getFirestore, collection, addDoc, onSnapshot, 
             query, updateDoc, doc, serverTimestamp, 
-            deleteDoc 
+            deleteDoc, writeBatch 
         } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
         import { 
             getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken
@@ -55,7 +55,7 @@
         let APP_ID;
 
         if (typeof __firebase_config !== 'undefined') {
-            // Environment Canvas/AI (Jangan diubah)
+            // Environment Canvas/AI (Jangan diubah untuk preview)
             firebaseConfig = JSON.parse(__firebase_config);
             APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'gkps-gsm-default';
         } else {
@@ -76,7 +76,7 @@
         let app, auth, db, analytics;
         try {
             app = initializeApp(firebaseConfig);
-            analytics = getAnalytics(app); // Initialize Analytics
+            analytics = getAnalytics(app); 
             auth = getAuth(app);
             db = getFirestore(app);
         } catch (e) {
@@ -225,11 +225,28 @@
             const resetAttendance = async () => {
                 if (!user) return;
                 if (!confirm('Reset semua status kehadiran?')) return;
-                participants.forEach(async (p) => {
-                    if (p.checkedIn) {
-                        await updateDoc(getDocRef(p.id), { checkedIn: false, checkInTime: null });
+                
+                try {
+                    const batch = writeBatch(db);
+                    let count = 0;
+                    participants.forEach((p) => {
+                        if (p.checkedIn) {
+                            const ref = getDocRef(p.id);
+                            batch.update(ref, { checkedIn: false, checkInTime: null });
+                            count++;
+                        }
+                    });
+                    
+                    if (count > 0) {
+                        await batch.commit();
+                        alert(`Berhasil reset ${count} peserta.`);
+                    } else {
+                        alert("Tidak ada peserta yang perlu di-reset.");
                     }
-                });
+                } catch (e) {
+                    console.error(e);
+                    alert("Gagal melakukan reset. Cek console untuk detail.");
+                }
             };
 
             const downloadCSV = () => {
@@ -257,31 +274,59 @@
                 reader.onload = async (event) => {
                     const lines = event.target.result.split(/\r\n|\n/);
                     let addedCount = 0;
-                    const promises = [];
+                    
+                    // Menggunakan Batch untuk performa dan reliabilitas
+                    const batch = writeBatch(db);
+                    let batchOpCount = 0;
 
                     for (let i = 0; i < lines.length; i++) {
                         const line = lines[i].trim();
                         if (!line) continue;
+                        
+                        // Handle CSV parsing sederhana (memperhitungkan quote excel)
                         let name = line.split(',')[0].replace(/^"|"$/g, '').trim();
+                        
+                        // Validasi header dan data sampah
                         if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#')) continue;
 
                         if (!participants.some(p => p.name.toLowerCase() === name.toLowerCase())) {
                             let uniqueReg = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
-                            promises.push(addDoc(getCollectionRef(), {
-                                name: name, regNum: uniqueReg, checkedIn: false, checkInTime: null
-                            }));
+                            const newDocRef = doc(getCollectionRef());
+                            
+                            batch.set(newDocRef, {
+                                name: name, 
+                                regNum: uniqueReg, 
+                                checkedIn: false, 
+                                checkInTime: null
+                            });
+                            
                             addedCount++;
+                            batchOpCount++;
+                            
+                            // Batch limit Firestore adalah 500. Jika lebih, harus di-commit dulu.
+                            // Untuk aplikasi ini, kita asumsikan jumlah peserta < 500 per upload.
+                            if (batchOpCount >= 490) break; // Safety limit
                         }
                     }
 
-                    try {
-                        await Promise.all(promises);
-                        alert(`Berhasil import ${addedCount} data.`);
-                    } catch (err) {
-                        alert("Gagal import sebagian data.");
+                    if (addedCount > 0) {
+                        try {
+                            await batch.commit();
+                            alert(`Berhasil import ${addedCount} data.`);
+                        } catch (err) {
+                            console.error("Batch Import Error:", err);
+                            alert("Gagal import data. Cek koneksi.");
+                        }
+                    } else {
+                        alert("Tidak ada data baru yang ditambahkan (Mungkin duplikat).");
                     }
+                    
                     setImporting(false);
                     e.target.value = null;
+                };
+                reader.onerror = () => {
+                    alert("Gagal membaca file");
+                    setImporting(false);
                 };
                 reader.readAsText(file);
             };
@@ -519,4 +564,3 @@
     </script>
 </body>
 </html>
-
