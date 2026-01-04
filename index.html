@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sermon GSM GKPS Tangerang</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel untuk JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Custom Styles untuk Animasi -->
+    <style>
+        @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes bounce-short {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        .animate-fade-in { animation: fade-in 0.5s ease-out; }
+        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out; }
+        .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
+        
+        /* Hide Scrollbar for cleaner UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        // Import Modules dari CDN (ESM)
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+        import { 
+            getFirestore, collection, addDoc, onSnapshot, 
+            query, updateDoc, doc, serverTimestamp, 
+            deleteDoc 
+        } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+        import { 
+            getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken
+        } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
+        
+        // Import Lucide Icons dari ESM.sh
+        import { 
+            QrCode, Users, CheckCircle, Search, 
+            Download, Trash2, Plus, Lock, 
+            LogOut, Camera, AlertCircle, RefreshCw 
+        } from 'https://esm.sh/lucide-react@0.292.0';
+
+        // --- KONFIGURASI FIREBASE ---
+        let firebaseConfig;
+        let APP_ID;
+
+        if (typeof __firebase_config !== 'undefined') {
+            // Environment Canvas/AI
+            firebaseConfig = JSON.parse(__firebase_config);
+            APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'gkps-gsm-default';
+        } else {
+            // Environment Lokal (Browser User)
+            firebaseConfig = {
+                apiKey: "API_KEY_ANDA_DISINI",
+                authDomain: "PROJECT_ID.firebaseapp.com",
+                projectId: "PROJECT_ID",
+                storageBucket: "PROJECT_ID.appspot.com",
+                messagingSenderId: "SENDER_ID",
+                appId: "APP_ID"
+            };
+            APP_ID = 'gkps-gsm-local';
+            
+            if (firebaseConfig.apiKey === "API_KEY_ANDA_DISINI") {
+                console.warn("Harap isi konfigurasi Firebase di dalam script!");
+            }
+        }
+
+        // Initialize Firebase
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
+        }
+
+        const COLLECTION_NAME = 'gkps_participants';
+
+        // --- UTILITAS ---
+        const formatTime = (timestamp) => {
+            if (!timestamp) return '-';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        };
+
+        // --- KOMPONEN UTAMA (App) ---
+        function App() {
+            const [user, setUser] = React.useState(null);
+            const [view, setView] = React.useState('home');
+            const [participants, setParticipants] = React.useState([]);
+            const [loading, setLoading] = React.useState(true);
+            const [authError, setAuthError] = React.useState(null);
+            
+            // State Admin
+            const [isAdmin, setIsAdmin] = React.useState(false);
+            const [adminPin, setAdminPin] = React.useState('');
+            const [isSessionOpen, setIsSessionOpen] = React.useState(false);
+
+            // State Form & Search
+            const [newName, setNewName] = React.useState('');
+            const [newRegNum, setNewRegNum] = React.useState('');
+            const [searchQuery, setSearchQuery] = React.useState('');
+            const [myRegLogin, setMyRegLogin] = React.useState('');
+            const [myParticipantData, setMyParticipantData] = React.useState(null);
+
+            // State Scanner
+            const [scanInput, setScanInput] = React.useState('');
+            const [scanStatus, setScanStatus] = React.useState('idle'); 
+            const [scannedName, setScannedName] = React.useState('');
+
+            // --- EFEK: AUTH & DATA ---
+            React.useEffect(() => {
+                const initAuth = async () => {
+                    if (!auth) {
+                        setLoading(false);
+                        return;
+                    }
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (err) {
+                        console.error("Auth Error:", err);
+                        setAuthError("Gagal autentikasi. Silakan refresh.");
+                        setLoading(false);
+                    }
+                };
+                initAuth();
+                
+                if(auth) {
+                    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
+                        setUser(u);
+                        if (!u) {
+                             // If user is null but no error yet, wait slightly or handle
+                        }
+                    });
+                    return () => unsubscribeAuth();
+                }
+            }, []);
+
+            React.useEffect(() => {
+                if (!user || !db) return;
+
+                let q;
+                if (typeof __app_id !== 'undefined') {
+                     q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME));
+                } else {
+                     q = query(collection(db, COLLECTION_NAME));
+                }
+                
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    
+                    data.sort((a, b) => {
+                        if (a.checkedIn === b.checkedIn) return a.name.localeCompare(b.name);
+                        return a.checkedIn ? -1 : 1;
+                    });
+
+                    setParticipants(data);
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Error fetching data:", error);
+                    setAuthError("Gagal mengambil data: " + error.message);
+                    setLoading(false);
+                });
+
+                return () => unsubscribe();
+            }, [user]);
+
+            // --- LOGIC: ADMIN ---
+            const handleAdminLogin = () => {
+                if (adminPin === '1234') {
+                    setIsAdmin(true);
+                    setAdminPin('');
+                } else {
+                    alert('PIN Salah! (Coba: 1234)');
+                }
+            };
+
+            const getCollectionRef = () => {
+                 if (typeof __app_id !== 'undefined') {
+                     return collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME);
+                 }
+                 return collection(db, COLLECTION_NAME);
+            };
+
+            const getDocRef = (id) => {
+                 if (typeof __app_id !== 'undefined') {
+                     return doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, id);
+                 }
+                 return doc(db, COLLECTION_NAME, id);
+            };
+
+            const addParticipant = async (e) => {
+                e.preventDefault();
+                if (!newName || !newRegNum || !user) return;
+
+                const isDuplicate = participants.some(p => p.regNum === newRegNum);
+                if (isDuplicate) {
+                    alert('Nomor Registrasi sudah terdaftar!');
+                    return;
+                }
+
+                try {
+                    await addDoc(getCollectionRef(), {
+                        name: newName,
+                        regNum: newRegNum,
+                        checkedIn: false,
+                        checkInTime: null
+                    });
+                    setNewName('');
+                    setNewRegNum('');
+                } catch (error) {
+                    console.error("Gagal tambah:", error);
+                    alert("Gagal menyimpan. Cek koneksi atau config Firebase.");
+                }
+            };
+
+            const deleteParticipant = async (id) => {
+                if (!confirm('Hapus peserta ini?')) return;
+                try {
+                    await deleteDoc(getDocRef(id));
+                } catch (e) {
+                    console.error(e);
+                }
+            };
+
+            const resetAttendance = async () => {
+                if (!confirm('Reset semua status kehadiran ke BELUM HADIR?')) return;
+                participants.forEach(async (p) => {
+                    if (p.checkedIn) {
+                        await updateDoc(getDocRef(p.id), {
+                            checkedIn: false,
+                            checkInTime: null
+                        });
+                    }
+                });
+            };
+
+            const downloadCSV = () => {
+                const headers = "Nama,Nomor Registrasi,Status,Waktu Check-in\n";
+                const rows = participants.map(p => 
+                    `"${p.name}","${p.regNum}","${p.checkedIn ? 'Hadir' : 'Belum'}","${p.checkedIn ? formatTime(p.checkInTime) : '-'}"`
+                ).join("\n");
+                
+                const blob = new Blob([headers + rows], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Absensi_GSM_${new Date().toLocaleDateString()}.csv`;
+                a.click();
+            };
+
+            // --- LOGIC: SCANNER ---
+            const handleCheckIn = async (regNumInput) => {
+                if (!isSessionOpen && !isAdmin) {
+                    setScanStatus('closed');
+                    return;
+                }
+
+                const participant = participants.find(p => p.regNum === regNumInput);
+                
+                if (!participant) {
+                    setScanStatus('error');
+                    setScannedName('Data tidak ditemukan');
+                    return;
+                }
+
+                if (participant.checkedIn) {
+                    setScanStatus('duplicate');
+                    setScannedName(participant.name);
+                    return;
+                }
+
+                try {
+                    await updateDoc(getDocRef(participant.id), {
+                        checkedIn: true,
+                        checkInTime: serverTimestamp()
+                    });
+                    setScanStatus('success');
+                    setScannedName(participant.name);
+                    setScanInput('');
+                } catch (e) {
+                    console.error(e);
+                    setScanStatus('error');
+                }
+            };
+
+            // --- LOGIC: MY QR ---
+            const findMyQR = (e) => {
+                e.preventDefault();
+                const found = participants.find(p => p.regNum === myRegLogin);
+                if (found) {
+                    setMyParticipantData(found);
+                } else {
+                    alert('Data tidak ditemukan. Pastikan Nomor Registrasi benar.');
+                }
+            };
+
+            // --- RENDER HELPERS ---
+            const NavBar = () => (
+                <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
+                    <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
+                        <button onClick={() => setView('home')} className={`flex flex-col items-center p-2 ${view === 'home' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <Users size={20} />
+                            <span className="text-xs mt-1">Beranda</span>
+                        </button>
+                        <button onClick={() => setView('my-qr')} className={`flex flex-col items-center p-2 ${view === 'my-qr' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <QrCode size={20} />
+                            <span className="text-xs mt-1">QR Saya</span>
+                        </button>
+                        <button onClick={() => setView('scanner')} className={`flex flex-col items-center p-2 ${view === 'scanner' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <div className="bg-blue-600 rounded-full p-2 -mt-6 shadow-lg border-4 border-white md:mt-0 md:border-0 md:bg-transparent md:text-inherit">
+                                <Camera size={24} className="text-white md:text-current" />
+                            </div>
+                            <span className="text-xs mt-1">Scan</span>
+                        </button>
+                        <button onClick={() => setView('live')} className={`flex flex-col items-center p-2 ${view === 'live' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <CheckCircle size={20} />
+                            <span className="text-xs mt-1">Live</span>
+                        </button>
+                        <button onClick={() => setView('admin')} className={`flex flex-col items-center p-2 ${view === 'admin' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <Lock size={20} />
+                            <span className="text-xs mt-1">Admin</span>
+                        </button>
+                    </div>
+                </nav>
+            );
+
+            // --- VIEWS ---
+            if (loading) return (
+                <div className="flex flex-col items-center justify-center h-screen bg-gray-50 p-4 text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                    <p className="text-gray-500">Memuat Sistem...</p>
+                    {authError && <p className="text-red-500 mt-2 text-sm">{authError}</p>}
+                </div>
+            );
+
+            // ADMIN VIEW
+            const renderAdmin = () => {
+                if (!isAdmin) {
+                    return (
+                        <div className="flex flex-col items-center justify-center h-[60vh] p-4">
+                            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center">
+                                <Lock className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                                <h2 className="text-2xl font-bold mb-2">Akses Admin</h2>
+                                <p className="text-gray-500 mb-6">Masukkan PIN untuk mengelola absensi.</p>
+                                <input 
+                                    type="password" 
+                                    value={adminPin}
+                                    onChange={(e) => setAdminPin(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center text-lg tracking-widest"
+                                    placeholder="PIN (1234)"
+                                />
+                                <button onClick={handleAdminLogin} className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
+                                    Masuk Dashboard
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                const filteredList = participants.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+                return (
+                    <div className="p-4 pb-24 max-w-4xl mx-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h1 className="text-2xl font-bold text-gray-800">Dashboard Admin</h1>
+                            <button onClick={() => setIsAdmin(false)} className="text-red-500 flex items-center gap-1 text-sm font-medium">
+                                <LogOut size={16} /> Logout
+                            </button>
+                        </div>
+
+                        <div className={`p-4 rounded-xl mb-6 flex justify-between items-center transition-colors ${isSessionOpen ? 'bg-green-100 border border-green-300' : 'bg-red-100 border border-red-300'}`}>
+                            <div>
+                                <h3 className="font-bold text-gray-800">Status Absensi: {isSessionOpen ? 'DIBUKA' : 'DITUTUP'}</h3>
+                                <p className="text-sm text-gray-600">{isSessionOpen ? 'Peserta dapat melakukan Check-in.' : 'Check-in ditolak (kecuali Admin).'}</p>
+                            </div>
+                            <button onClick={() => setIsSessionOpen(!isSessionOpen)} className={`px-4 py-2 rounded-lg font-semibold text-white ${isSessionOpen ? 'bg-green-600' : 'bg-red-600'}`}>
+                                {isSessionOpen ? 'Tutup Sesi' : 'Buka Sesi'}
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-gray-500 text-sm">Total Peserta</p>
+                                <p className="text-3xl font-bold text-blue-600">{participants.length}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-gray-500 text-sm">Sudah Hadir</p>
+                                <p className="text-3xl font-bold text-green-600">{participants.filter(p => p.checkedIn).length}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
+                            <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Registrasi Peserta Baru</h3>
+                            <form onSubmit={addParticipant} className="flex flex-col md:flex-row gap-3">
+                                <input className="flex-1 p-2 border border-gray-300 rounded-lg" placeholder="Nama Lengkap" value={newName} onChange={e => setNewName(e.target.value)} required />
+                                <input className="md:w-48 p-2 border border-gray-300 rounded-lg" placeholder="No. Registrasi (Unik)" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} required />
+                                <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">Tambah</button>
+                            </form>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 mb-4">
+                            <button onClick={downloadCSV} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700">
+                                <Download size={16} /> Export Excel (CSV)
+                            </button>
+                            <button onClick={resetAttendance} className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700">
+                                <RefreshCw size={16} /> Reset Absensi
+                            </button>
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="p-4 border-b border-gray-100">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                                    <input className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Cari nama peserta..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                                </div>
+                            </div>
+                            <div className="max-h-[500px] overflow-y-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-50 text-gray-600 font-medium">
+                                        <tr>
+                                            <th className="p-4">Nama / No.Reg</th>
+                                            <th className="p-4 text-center">Status</th>
+                                            <th className="p-4 text-right">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredList.map(p => (
+                                            <tr key={p.id} className="hover:bg-gray-50">
+                                                <td className="p-4">
+                                                    <div className="font-semibold text-gray-800">{p.name}</div>
+                                                    <div className="text-xs text-gray-500">Reg: {p.regNum}</div>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {p.checkedIn ? (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Hadir: {formatTime(p.checkInTime)}</span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Belum</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <button onClick={() => deleteParticipant(p.id)} className="text-red-500 p-2 hover:bg-red-50 rounded-lg transition"><Trash2 size={16} /></button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            // SCANNER VIEW
+            const renderScanner = () => (
+                <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-800">Scan Absensi</h2>
+                    <div className="relative w-full aspect-square bg-gray-900 rounded-3xl overflow-hidden shadow-2xl mb-8 flex flex-col items-center justify-center">
+                        <div className="absolute inset-0 border-[30px] border-black/30 z-10 pointer-events-none"></div>
+                        <div className="absolute w-64 h-64 border-2 border-white/50 rounded-xl z-20 animate-pulse"></div>
+                        <div className="absolute w-full h-1 bg-red-500 top-1/2 z-20 shadow-[0_0_10px_rgba(255,0,0,0.8)]"></div>
+                        <p className="text-white/70 z-0 mb-4">Arahkan kamera ke QR Code</p>
+                        <div className="z-30 w-3/4">
+                            <input 
+                                type="text" 
+                                placeholder="Klik di sini & Scan (Input ID)"
+                                value={scanInput}
+                                onChange={(e) => {
+                                    setScanInput(e.target.value);
+                                    if (e.target.value.length >= 3) { /* debounce */ }
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleCheckIn(scanInput); }}
+                                className="w-full bg-white/10 border border-white/30 text-white placeholder-white/50 text-center rounded-lg py-2 focus:outline-none focus:bg-white/20 backdrop-blur-sm"
+                            />
+                            <button onClick={() => handleCheckIn(scanInput)} className="w-full mt-2 bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Check-In Manual</button>
+                        </div>
+                    </div>
+
+                    {scanStatus === 'success' && (
+                        <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3 animate-bounce-short">
+                            <CheckCircle className="w-6 h-6" />
+                            <div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div>
+                        </div>
+                    )}
+                    {scanStatus === 'duplicate' && (
+                        <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3">
+                            <AlertCircle className="w-6 h-6" />
+                            <div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName} sudah check-in sebelumnya.</p></div>
+                        </div>
+                    )}
+                    {scanStatus === 'error' && (
+                        <div className="w-full bg-red-100 border border-red-400 text-red-800 px-4 py-3 rounded-xl flex items-center gap-3">
+                            <AlertCircle className="w-6 h-6" />
+                            <div><p className="font-bold">Gagal</p><p className="text-sm">Data tidak ditemukan.</p></div>
+                        </div>
+                    )}
+                    {scanStatus === 'closed' && (
+                        <div className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl flex items-center gap-3">
+                            <Lock className="w-6 h-6" />
+                            <div><p className="font-bold">Absensi Ditutup</p><p className="text-sm">Silakan hubungi Admin.</p></div>
+                        </div>
+                    )}
+
+                    <p className="mt-8 text-xs text-gray-400 text-center max-w-xs">Pastikan izin kamera aktif. Jika gagal, masukkan Nomor Registrasi secara manual pada kolom di atas.</p>
+                </div>
+            );
+
+            // MY QR VIEW
+            const renderMyQr = () => (
+                <div className="flex flex-col items-center min-h-[80vh] p-6 max-w-md mx-auto">
+                    <h2 className="text-2xl font-bold mb-2 text-gray-800">QR Code Saya</h2>
+                    <p className="text-gray-500 mb-8 text-center">Tunjukkan QR ini kepada panitia saat kedatangan.</p>
+
+                    {!myParticipantData ? (
+                        <div className="w-full bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Masukkan Nomor Registrasi</label>
+                            <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="Contoh: REG001" />
+                            <button onClick={findMyQR} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">Tampilkan QR Saya</button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center animate-fade-in w-full">
+                            <div className="bg-white p-6 rounded-3xl shadow-xl border-4 border-blue-50 mb-6">
+                                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${myParticipantData.regNum}&color=2563eb`} alt="QR Code" className="w-48 h-48 md:w-64 md:h-64 object-contain" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900">{myParticipantData.name}</h3>
+                            <p className="text-blue-600 font-mono text-lg mb-6">{myParticipantData.regNum}</p>
+                            
+                            <div className="w-full bg-gray-50 p-4 rounded-xl border border-gray-100 text-center">
+                                <p className="text-sm text-gray-500 mb-1">Status Kehadiran</p>
+                                {myParticipantData.checkedIn ? (
+                                    <span className="text-green-600 font-bold flex items-center justify-center gap-2"><CheckCircle size={18} /> SUDAH CHECK-IN</span>
+                                ) : (
+                                    <span className="text-gray-400 font-bold">BELUM CHECK-IN</span>
+                                )}
+                            </div>
+
+                            <button onClick={() => { setMyParticipantData(null); setMyRegLogin(''); }} className="mt-8 text-gray-400 text-sm hover:text-gray-600">Cari Nomor Lain</button>
+                        </div>
+                    )}
+                </div>
+            );
+
+            // LIVE VIEW
+            const renderLive = () => {
+                const checkedInList = participants.filter(p => p.checkedIn);
+                
+                return (
+                    <div className="p-4 pb-24 max-w-2xl mx-auto">
+                        <div className="text-center mb-8">
+                            <h1 className="text-2xl font-bold text-gray-800">Live Attendance</h1>
+                            <p className="text-gray-500">GSM GKPS Tangerang</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-8">
+                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-center">
+                                <span className="block text-3xl font-bold text-blue-600">{checkedInList.length}</span>
+                                <span className="text-xs text-blue-400 uppercase font-semibold tracking-wider">Hadir</span>
+                            </div>
+                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 text-center">
+                                <span className="block text-3xl font-bold text-gray-400">{participants.length - checkedInList.length}</span>
+                                <span className="text-xs text-gray-400 uppercase font-semibold tracking-wider">Belum</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            {checkedInList.map((p) => (
+                                <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between animate-fade-in-up">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                                            {p.name.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-semibold text-gray-800">{p.name}</h4>
+                                            <p className="text-xs text-gray-400">Reg: {p.regNum}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="block text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-md">{formatTime(p.checkInTime)}</span>
+                                    </div>
+                                </div>
+                            ))}
+                            {checkedInList.length === 0 && (
+                                <div className="text-center py-12 text-gray-400">
+                                    <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                    <p>Belum ada peserta yang check-in.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50 text-gray-900 font-sans md:pt-16 md:pb-0">
+                    <div className="hidden md:block"><NavBar /></div>
+
+                    <main className="md:pt-8">
+                        {view === 'home' && (
+                            <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center max-w-lg mx-auto">
+                                <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center shadow-lg shadow-blue-200 mb-8 transform rotate-3">
+                                    <Users className="text-white w-12 h-12" />
+                                </div>
+                                <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Sermon GSM</h1>
+                                <h2 className="text-xl text-blue-600 font-medium mb-6">GKPS Tangerang</h2>
+                                <p className="text-gray-500 mb-8 leading-relaxed">Selamat datang di sistem absensi digital. Silakan pilih menu di bawah ini (Mobile) atau di atas (Desktop) untuk melanjutkan.</p>
+                                <div className="grid grid-cols-2 gap-4 w-full">
+                                    <button onClick={() => setView('my-qr')} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-blue-500 transition group">
+                                        <QrCode className="w-8 h-8 text-blue-600 mb-2 group-hover:scale-110 transition" />
+                                        <span className="block font-semibold">QR Saya</span>
+                                    </button>
+                                    <button onClick={() => setView('live')} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-green-500 transition group">
+                                        <CheckCircle className="w-8 h-8 text-green-600 mb-2 group-hover:scale-110 transition" />
+                                        <span className="block font-semibold">Live Hadir</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {view === 'admin' && renderAdmin()}
+                        {view === 'scanner' && renderScanner()}
+                        {view === 'my-qr' && renderMyQr()}
+                        {view === 'live' && renderLive()}
+                    </main>
+
+                    <div className="md:hidden pb-20"></div>
+                    <div className="md:hidden"><NavBar /></div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
