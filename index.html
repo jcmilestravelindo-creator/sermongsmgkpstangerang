@@ -23,6 +23,8 @@
         .animate-fade-in { animation: fade-in 0.5s ease-out; }
         .animate-fade-in-up { animation: fade-in-up 0.5s ease-out; }
         .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
+        
+        /* Hide Scrollbar for cleaner UI */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -33,13 +35,13 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        // Menggunakan versi Firebase 10.13.1 yang stabil dan kompatibel
+        // --- IMPORT MODULES ---
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-analytics.js';
         import { 
             getFirestore, collection, addDoc, onSnapshot, 
             query, updateDoc, doc, serverTimestamp, 
-            deleteDoc, writeBatch, enableIndexedDbPersistence 
+            deleteDoc, writeBatch 
         } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { 
             getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken
@@ -47,28 +49,28 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, Info
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
         let firebaseConfig;
         let APP_ID;
 
-        // Cek Environment (Canvas vs Local)
+        // Cek Environment
         if (typeof __firebase_config !== 'undefined') {
             firebaseConfig = JSON.parse(__firebase_config);
             APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'gkps-gsm-default';
         } else {
-            // Konfigurasi Project User (sermongsmgkpstangerang)
+            // Konfigurasi Project Baru: sermongsmgkpstangerang-77b63
             firebaseConfig = {
-                apiKey: "AIzaSyDfGHVEsULrhB3JDz5ujL4_YNdTq3gYnLQ",
-                authDomain: "sermongsmgkpstangerang.firebaseapp.com",
-                databaseURL: "https://sermongsmgkpstangerang-default-rtdb.asia-southeast1.firebasedatabase.app/",
-                projectId: "sermongsmgkpstangerang",
-                storageBucket: "sermongsmgkpstangerang.firebasestorage.app",
-                messagingSenderId: "816490446270",
-                appId: "1:816490446270:web:8cb1156ac986b5fd448def",
-                measurementId: "G-FV09TXZ5D7"
+                apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
+                authDomain: "sermongsmgkpstangerang-77b63.firebaseapp.com",
+                databaseURL: "https://sermongsmgkpstangerang-77b63-default-rtdb.asia-southeast1.firebasedatabase.app",
+                projectId: "sermongsmgkpstangerang-77b63",
+                storageBucket: "sermongsmgkpstangerang-77b63.firebasestorage.app",
+                messagingSenderId: "987409950584",
+                appId: "1:987409950584:web:b6792a69050f673c6eca8d",
+                measurementId: "G-GE3FRB9D54"
             };
             APP_ID = 'gkps-gsm-local';
         }
@@ -80,14 +82,6 @@
             analytics = getAnalytics(app);
             auth = getAuth(app);
             db = getFirestore(app);
-            // Opsional: Persistence untuk menjaga data tetap ada saat offline sebentar
-            enableIndexedDbPersistence(db).catch((err) => {
-                if (err.code == 'failed-precondition') {
-                    console.warn('Persistence failed: Multiple tabs open');
-                } else if (err.code == 'unimplemented') {
-                    console.warn('Persistence not supported on this browser');
-                }
-            });
         } catch (e) {
             console.error("Firebase Init Error:", e);
         }
@@ -97,27 +91,54 @@
         // --- HELPER FUNCTIONS ---
         const formatTime = (timestamp) => {
             if (!timestamp) return '-';
-            // Handle Firestore Timestamp & JS Date
             const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
             return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         };
 
+        // --- KOMPONEN NAVBAR (DEFINISI DI LUAR APP UNTUK MENGHINDARI ERROR) ---
+        const NavBar = ({ view, setView }) => (
+            <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
+                <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
+                    <button onClick={() => setView('home')} className={`flex flex-col items-center p-2 ${view === 'home' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <Users size={20} />
+                        <span className="text-[10px] mt-1">Beranda</span>
+                    </button>
+                    <button onClick={() => setView('my-qr')} className={`flex flex-col items-center p-2 ${view === 'my-qr' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <QrCode size={20} />
+                        <span className="text-[10px] mt-1">QR Saya</span>
+                    </button>
+                    <button onClick={() => setView('scanner')} className={`flex flex-col items-center p-2 ${view === 'scanner' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <div className="bg-blue-600 rounded-full p-2 -mt-6 shadow-lg border-4 border-white md:mt-0 md:border-0 md:bg-transparent md:text-inherit">
+                            <Camera size={24} className="text-white md:text-current"/>
+                        </div>
+                        <span className="text-[10px] mt-1">Scan</span>
+                    </button>
+                    <button onClick={() => setView('live')} className={`flex flex-col items-center p-2 ${view === 'live' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <CheckCircle size={20} />
+                        <span className="text-[10px] mt-1">Live</span>
+                    </button>
+                    <button onClick={() => setView('admin')} className={`flex flex-col items-center p-2 ${view === 'admin' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <Lock size={20} />
+                        <span className="text-[10px] mt-1">Admin</span>
+                    </button>
+                </div>
+            </nav>
+        );
+
         // --- KOMPONEN UTAMA ---
         function App() {
-            // Auth & Data State
+            // -- State Definitions --
             const [user, setUser] = React.useState(null);
             const [participants, setParticipants] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
             const [authError, setAuthError] = React.useState(null);
             const [isConnecting, setIsConnecting] = React.useState(false);
             
-            // View State
             const [view, setView] = React.useState('home');
             const [isAdmin, setIsAdmin] = React.useState(false);
             const [adminPin, setAdminPin] = React.useState('');
             const [isSessionOpen, setIsSessionOpen] = React.useState(false);
             
-            // Operation State
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
             const [newName, setNewName] = React.useState('');
@@ -129,29 +150,23 @@
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
 
-            // --- 1. AUTHENTICATION LOGIC (ROBUST) ---
+            // -- Auth Logic --
             const performLogin = async () => {
                 setIsConnecting(true);
                 setAuthError(null);
                 try {
-                    // Prioritize Custom Token if available (Canvas Env), else Anonymous (Local)
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
                         await signInAnonymously(auth);
                     }
                 } catch (err) {
-                    console.error("Auth Error Detail:", err);
+                    console.error("Auth Error:", err);
                     let msg = "Gagal koneksi database.";
-                    // Diagnosa Error Spesifik
                     if (err.code === 'auth/operation-not-allowed') {
-                        msg = "SETUP DIPERLUKAN: Masuk ke Firebase Console > Authentication > Sign-in method, lalu AKTIFKAN 'Anonymous'.";
-                    } else if (err.code === 'auth/network-request-failed') {
-                        msg = "Koneksi internet bermasalah. Periksa jaringan Anda.";
-                    } else if (err.code === 'auth/api-key-not-valid') {
-                        msg = "API Key Firebase tidak valid. Cek konfigurasi.";
+                        msg = "Mohon aktifkan 'Anonymous Auth' di Firebase Console Anda.";
                     } else {
-                        msg = `Error Autentikasi: ${err.message}`;
+                        msg = `Error: ${err.message}`;
                     }
                     setAuthError(msg);
                 } finally {
@@ -160,39 +175,29 @@
             };
 
             React.useEffect(() => {
-                if (!auth) { 
-                    setLoading(false); 
-                    setAuthError("Firebase Auth Module tidak terload.");
-                    return; 
-                }
-                
+                if (!auth) { setLoading(false); return; }
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     setLoading(false);
-                    if (u) setAuthError(null); // Clear error on success
+                    if (u) setAuthError(null);
                 });
-
-                performLogin(); // Auto login on mount
+                performLogin();
                 return () => unsubscribe();
             }, []);
 
-            // --- 2. DATA LISTENER (ROBUST) ---
+            // -- Data Logic --
             React.useEffect(() => {
                 if (!user || !db) return;
 
-                // Tentukan Path Collection sesuai Environment
                 let q;
                 if (typeof __app_id !== 'undefined') {
-                     // Environment Canvas
                      q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME));
                 } else {
-                     // Environment Lokal
                      q = query(collection(db, COLLECTION_NAME));
                 }
                 
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Sorting: Checked-in first, then Alphabetical
                     data.sort((a, b) => {
                         if (a.checkedIn === b.checkedIn) return a.name.localeCompare(b.name);
                         return a.checkedIn ? -1 : 1;
@@ -200,19 +205,15 @@
                     setParticipants(data);
                 }, (error) => {
                     console.error("Snapshot Error:", error);
-                    // Diagnosa Error Permission
                     if (error.code === 'permission-denied') {
-                        setAuthError("AKSES DITOLAK: Masuk ke Firebase Console > Firestore Database > Rules. Ubah menjadi: allow read, write: if true; (Untuk Mode Test).");
-                    } else if (error.code === 'unavailable') {
-                        // Silent fail for offline, UI handles via connection status usually
-                        console.warn("Firestore offline mode active.");
+                        setAuthError("Izin database ditolak. Cek Firestore Rules.");
                     }
                 });
 
                 return () => unsubscribe();
             }, [user]);
 
-            // --- 3. HELPER: GET REFS ---
+            // -- Helpers Refs --
             const getCollectionRef = () => {
                  if (typeof __app_id !== 'undefined') {
                      return collection(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME);
@@ -227,7 +228,7 @@
                  return doc(db, COLLECTION_NAME, id);
             };
 
-            // --- 4. ADMIN FEATURES (FIXED) ---
+            // -- Admin Functions --
             const handleAdminLogin = (e) => {
                 e.preventDefault();
                 if (adminPin === '1234') {
@@ -240,8 +241,7 @@
 
             const addParticipant = async (e) => {
                 e.preventDefault();
-                if (!user) { alert("Sistem Offline. Silakan klik 'Coba Hubungkan Ulang' di pojok kanan atas."); return; }
-                
+                if (!user) { alert("Sistem Offline."); return; }
                 if (!newName || !newRegNum) return;
 
                 const isDuplicate = participants.some(p => p.regNum === newRegNum);
@@ -257,32 +257,29 @@
                     setNewName('');
                     setNewRegNum('');
                 } catch (error) {
-                    console.error("Add Error:", error);
-                    alert("Gagal menambah peserta. Cek apakah Rules Database sudah 'allow write'.\nError: " + error.message);
+                    alert("Gagal menambah: " + error.message);
                 }
             };
 
             const deleteParticipant = async (id) => {
                 if (!confirm('Hapus peserta ini?')) return;
-                try { await deleteDoc(getDocRef(id)); } catch (e) { alert("Gagal hapus: " + e.message); }
+                try { await deleteDoc(getDocRef(id)); } catch (e) { alert("Gagal hapus."); }
             };
 
             const resetAttendance = async () => {
                 if (!user) return;
-                if (!confirm('PERINGATAN: Ini akan mereset status kehadiran SEMUA peserta menjadi BELUM HADIR. Lanjutkan?')) return;
+                if (!confirm('RESET SEMUA KEHADIRAN?')) return;
                 
                 setImporting(true);
                 try {
                     const checkedInIds = participants.filter(p => p.checkedIn).map(p => p.id);
-                    
                     if (checkedInIds.length === 0) {
-                        alert("Tidak ada data kehadiran untuk di-reset.");
+                        alert("Tidak ada data untuk di-reset.");
                         setImporting(false);
                         return;
                     }
 
-                    // Batching Process (Firestore limit 500 ops per batch)
-                    const chunkSize = 450; 
+                    const chunkSize = 450;
                     for (let i = 0; i < checkedInIds.length; i += chunkSize) {
                         const chunk = checkedInIds.slice(i, i + chunkSize);
                         const batch = writeBatch(db);
@@ -291,10 +288,9 @@
                         });
                         await batch.commit();
                     }
-                    alert(`Sukses mereset ${checkedInIds.length} peserta.`);
+                    alert(`Berhasil reset ${checkedInIds.length} peserta.`);
                 } catch (e) {
-                    console.error(e);
-                    alert("Terjadi kesalahan saat reset: " + e.message);
+                    alert("Error reset: " + e.message);
                 } finally {
                     setImporting(false);
                 }
@@ -303,11 +299,9 @@
             const handleImportCSV = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (!user) { alert("Offline. Pastikan terkoneksi."); return; }
+                if (!user) { alert("Offline."); return; }
 
-                if (!confirm(`Import data dari "${file.name}"? \nPastikan kolom pertama adalah Nama.`)) { 
-                    e.target.value = null; return; 
-                }
+                if (!confirm(`Import "${file.name}"?`)) { e.target.value = null; return; }
 
                 setImporting(true);
                 const reader = new FileReader();
@@ -321,13 +315,10 @@
                             const line = lines[i].trim();
                             if (!line) continue;
                             
-                            // Simple CSV Parse
                             let name = line.split(',')[0].replace(/^"|"$/g, '').trim();
                             
-                            // Validasi Header/Junk
                             if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#') || name.startsWith('=')) continue;
 
-                            // Cek duplikat
                             const exists = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
                             if (!exists) {
                                 let uniqueReg = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -341,37 +332,31 @@
                         }
 
                         if (newParticipants.length === 0) {
-                            alert("Tidak ada data valid baru yang ditemukan.");
+                            alert("Tidak ada data baru.");
                             return;
                         }
 
-                        // Batch Upload
                         let processed = 0;
                         const chunkSize = 450;
                         for (let i = 0; i < newParticipants.length; i += chunkSize) {
                             const chunk = newParticipants.slice(i, i + chunkSize);
                             const batch = writeBatch(db);
-                            
                             chunk.forEach(data => {
                                 const newDocRef = doc(getCollectionRef());
                                 batch.set(newDocRef, data);
                             });
-                            
                             await batch.commit();
                             processed += chunk.length;
                         }
 
-                        alert(`Berhasil mengimport ${processed} peserta baru!`);
+                        alert(`Berhasil import ${processed} peserta.`);
                     } catch (err) {
-                        console.error("Import Error:", err);
                         alert("Gagal Import: " + err.message);
                     } finally {
                         setImporting(false);
                         e.target.value = null;
                     }
                 };
-                
-                reader.onerror = () => { alert("Gagal membaca file."); setImporting(false); };
                 reader.readAsText(file);
             };
 
@@ -388,34 +373,17 @@
                 a.click();
             };
 
-            // --- 5. USER FEATURES ---
+            // -- User Functions --
             const handleCheckIn = async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
-                
                 const participant = participants.find(p => p.regNum === regNumInput);
-                if (!participant) { 
-                    setScanStatus('error'); 
-                    setScannedName('Data tidak ditemukan'); 
-                    return; 
-                }
-                if (participant.checkedIn) { 
-                    setScanStatus('duplicate'); 
-                    setScannedName(participant.name); 
-                    return; 
-                }
+                if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
+                if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
 
                 try {
-                    await updateDoc(getDocRef(participant.id), { 
-                        checkedIn: true, 
-                        checkInTime: serverTimestamp() 
-                    });
-                    setScanStatus('success'); 
-                    setScannedName(participant.name); 
-                    setScanInput('');
-                } catch (e) { 
-                    console.error(e);
-                    setScanStatus('error'); 
-                }
+                    await updateDoc(getDocRef(participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
+                    setScanStatus('success'); setScannedName(participant.name); setScanInput('');
+                } catch (e) { setScanStatus('error'); }
             };
 
             const findMyQR = (e) => {
@@ -425,7 +393,7 @@
                 else alert('Nomor Registrasi tidak ditemukan.');
             };
 
-            // --- 6. RENDER ---
+            // -- RENDER HELPERS --
             if (loading) return (
                 <div className="flex flex-col h-screen items-center justify-center bg-gray-50">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
@@ -433,7 +401,7 @@
                 </div>
             );
 
-            // ADMIN VIEW
+            // ADMIN RENDER
             const renderAdmin = () => {
                 if (!isAdmin) {
                     return (
@@ -466,7 +434,6 @@
                             </div>
                         </div>
 
-                        {/* INFO ERROR / DIAGNOSTIK */}
                         {authError && (
                             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6 shadow-sm">
                                 <div className="flex items-start gap-3">
@@ -508,13 +475,10 @@
                         <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-gray-100 rounded-xl border border-gray-200">
                             <h3 className="w-full text-xs font-bold text-gray-500 uppercase mb-2">Tools</h3>
                             <button onClick={downloadCSV} className="flex items-center gap-2 bg-white text-gray-700 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50"><Download size={16} /> CSV</button>
-                            
                             <div className="border-l border-gray-300 h-6 mx-1"></div>
-                            
                             <button onClick={() => fileInputRef.current.click()} disabled={importing || !user} className={`flex items-center gap-2 text-white px-3 py-2 rounded-lg text-sm font-semibold transition ${importing ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
                                 <FileUp size={16} /> {importing ? 'Memproses...' : 'Import CSV'}
                             </button>
-                            
                             <div className="flex-1"></div>
                             <button onClick={resetAttendance} disabled={!user || importing} className="flex items-center gap-2 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-lg text-sm hover:bg-red-50">
                                 {importing ? <ReloadIcon className="animate-spin" size={16} /> : <RefreshCw size={16} />} Reset
@@ -617,23 +581,11 @@
                 );
             };
 
-            const NavBar = () => (
-                <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
-                    <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
-                        <button onClick={() => setView('home')} className={`flex flex-col items-center p-2 ${view === 'home' ? 'text-blue-600' : 'text-gray-500'}`}><Users size={20}/><span className="text-[10px] mt-1">Beranda</span></button>
-                        <button onClick={() => setView('my-qr')} className={`flex flex-col items-center p-2 ${view === 'my-qr' ? 'text-blue-600' : 'text-gray-500'}`}><QrCode size={20}/><span className="text-[10px] mt-1">QR Saya</span></button>
-                        <button onClick={() => setView('scanner')} className={`flex flex-col items-center p-2 ${view === 'scanner' ? 'text-blue-600' : 'text-gray-500'}`}>
-                            <div className="bg-blue-600 rounded-full p-2 -mt-6 shadow-lg border-4 border-white md:mt-0 md:border-0 md:bg-transparent md:text-inherit"><Camera size={24} className="text-white md:text-current"/></div><span className="text-[10px] mt-1">Scan</span>
-                        </button>
-                        <button onClick={() => setView('live')} className={`flex flex-col items-center p-2 ${view === 'live' ? 'text-blue-600' : 'text-gray-500'}`}><CheckCircle size={20}/><span className="text-[10px] mt-1">Live</span></button>
-                        <button onClick={() => setView('admin')} className={`flex flex-col items-center p-2 ${view === 'admin' ? 'text-blue-600' : 'text-gray-500'}`}><Lock size={20}/><span className="text-[10px] mt-1">Admin</span></button>
-                    </div>
-                </nav>
-            );
-
             return (
                 <div className="min-h-screen bg-gray-50 text-gray-900 font-sans md:pt-16 md:pb-0">
-                    <div className="hidden md:block"><NavBar /></div>
+                    <div className="hidden md:block">
+                        <NavBar view={view} setView={setView} />
+                    </div>
                     
                     <input type="file" ref={fileInputRef} onChange={handleImportCSV} accept=".csv" className="hidden" />
 
@@ -656,7 +608,9 @@
                     </main>
 
                     <div className="md:hidden pb-20"></div>
-                    <div className="md:hidden"><NavBar /></div>
+                    <div className="md:hidden">
+                        <NavBar view={view} setView={setView} />
+                    </div>
                 </div>
             );
         }
@@ -666,4 +620,3 @@
     </script>
 </body>
 </html>
-
