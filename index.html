@@ -48,11 +48,10 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
-        // Menggunakan Project Custom Anda: sermongsmgkpstangerang-77b63
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
             authDomain: "sermongsmgkpstangerang-77b63.firebaseapp.com",
@@ -72,7 +71,7 @@
             auth = getAuth(app);
             db = getFirestore(app);
             
-            // Aktifkan Offline Persistence (Penting untuk HP)
+            // Aktifkan Offline Persistence (Penting untuk HP agar data tersimpan lokal)
             enableIndexedDbPersistence(db).catch((err) => {
                 if (err.code == 'failed-precondition') {
                     console.warn('Persistence failed: Multiple tabs open');
@@ -84,8 +83,6 @@
             console.error("Firebase Init Error:", e);
         }
 
-        // --- SETTING KOLEKSI DATABASE ---
-        // PENTING: Gunakan nama koleksi yang SAMA PERSIS di semua device
         const COLLECTION_NAME = 'gkps_participants';
 
         // --- HELPER FUNCTIONS ---
@@ -143,18 +140,21 @@
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
             const [searchQuery, setSearchQuery] = React.useState('');
+            
+            // Perbaikan State Pencarian QR
             const [myRegLogin, setMyRegLogin] = React.useState('');
             const [myParticipantData, setMyParticipantData] = React.useState(null);
+            const [searchResults, setSearchResults] = React.useState([]); // Untuk hasil pencarian ganda
+            
             const [scanInput, setScanInput] = React.useState('');
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
 
-            // -- 1. AUTHENTICATION (Koneksi Database) --
+            // -- 1. AUTHENTICATION --
             const performLogin = async () => {
                 setIsConnecting(true);
                 setAuthError(null);
                 try {
-                    // Gunakan Anonymous Auth yang standar dan stabil
                     await signInAnonymously(auth);
                 } catch (err) {
                     console.error("Auth Error:", err);
@@ -174,31 +174,23 @@
 
             React.useEffect(() => {
                 if (!auth) { setLoading(false); return; }
-                
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     setLoading(false);
                     if (u) setAuthError(null);
                 });
-
-                // Coba login otomatis saat aplikasi dibuka
-                if (!auth.currentUser) {
-                    performLogin();
-                }
-
+                if (!auth.currentUser) performLogin();
                 return () => unsubscribe();
             }, []);
 
-            // -- 2. DATA LISTENER (Sinkronisasi Real-time) --
+            // -- 2. DATA LISTENER --
             React.useEffect(() => {
                 if (!user || !db) return;
-
-                // PERBAIKAN: Gunakan koleksi ROOT 'gkps_participants' agar konsisten di semua device
+                
                 const q = query(collection(db, COLLECTION_NAME));
                 
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Urutkan: Hadir duluan, lalu nama
                     data.sort((a, b) => {
                         if (a.checkedIn === b.checkedIn) return a.name.localeCompare(b.name);
                         return a.checkedIn ? -1 : 1;
@@ -215,14 +207,8 @@
             }, [user]);
 
             // -- Helper Refs --
-            const getCollectionRef = () => {
-                 // Selalu gunakan root collection
-                 return collection(db, COLLECTION_NAME);
-            };
-
-            const getDocRef = (id) => {
-                 return doc(db, COLLECTION_NAME, id);
-            };
+            const getCollectionRef = () => collection(db, COLLECTION_NAME);
+            const getDocRef = (id) => doc(db, COLLECTION_NAME, id);
 
             // -- Admin Functions --
             const handleAdminLogin = (e) => {
@@ -265,7 +251,6 @@
             const resetAttendance = async () => {
                 if (!user) return;
                 if (!confirm('RESET SEMUA KEHADIRAN?')) return;
-                
                 setImporting(true);
                 try {
                     const checkedInIds = participants.filter(p => p.checkedIn).map(p => p.id);
@@ -274,7 +259,6 @@
                         setImporting(false);
                         return;
                     }
-
                     const chunkSize = 450;
                     for (let i = 0; i < checkedInIds.length; i += chunkSize) {
                         const chunk = checkedInIds.slice(i, i + chunkSize);
@@ -296,44 +280,32 @@
                 const file = e.target.files[0];
                 if (!file) return;
                 if (!user) { alert("Offline."); return; }
-
                 if (!confirm(`Import "${file.name}"?`)) { e.target.value = null; return; }
 
                 setImporting(true);
                 const reader = new FileReader();
-                
                 reader.onload = async (event) => {
                     try {
                         const lines = event.target.result.split(/\r\n|\n/);
                         const newParticipants = [];
-                        
                         for (let i = 0; i < lines.length; i++) {
                             const line = lines[i].trim();
                             if (!line) continue;
-                            
                             let name = line.split(',')[0].replace(/^"|"$/g, '').trim();
                             if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#') || name.startsWith('=')) continue;
 
-                            // Cek duplikat di DB & Batch
                             const existsInDB = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
                             const existsInBatch = newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
 
                             if (!existsInDB && !existsInBatch) {
                                 let uniqueReg = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
-                                newParticipants.push({
-                                    name: name,
-                                    regNum: uniqueReg,
-                                    checkedIn: false,
-                                    checkInTime: null
-                                });
+                                newParticipants.push({ name: name, regNum: uniqueReg, checkedIn: false, checkInTime: null });
                             }
                         }
-
                         if (newParticipants.length === 0) {
-                            alert("Tidak ada data baru (Semua duplikat).");
+                            alert("Tidak ada data baru (Mungkin duplikat).");
                             return;
                         }
-
                         let processed = 0;
                         const chunkSize = 450;
                         for (let i = 0; i < newParticipants.length; i += chunkSize) {
@@ -346,7 +318,6 @@
                             await batch.commit();
                             processed += chunk.length;
                         }
-
                         alert(`Sukses import ${processed} peserta.`);
                     } catch (err) {
                         alert("Gagal Import: " + err.message);
@@ -374,23 +345,11 @@
             // -- User Functions --
             const handleCheckIn = async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
-                
-                // Normalisasi: Hapus spasi dan uppercase agar cocok
                 const cleanInput = regNumInput.trim().toUpperCase();
-                
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
                 
-                if (!participant) { 
-                    setScanStatus('error'); 
-                    setScannedName('Data tidak ditemukan'); 
-                    return; 
-                }
-                
-                if (participant.checkedIn) { 
-                    setScanStatus('duplicate'); 
-                    setScannedName(participant.name); 
-                    return; 
-                }
+                if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
+                if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
 
                 try {
                     await updateDoc(getDocRef(participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
@@ -398,16 +357,38 @@
                 } catch (e) { setScanStatus('error'); }
             };
 
+            // LOGIKA PENCARIAN QR YANG DIPERBAIKI
             const findMyQR = (e) => {
                 e.preventDefault();
-                const cleanInput = myRegLogin.trim().toUpperCase();
-                const found = participants.find(p => p.regNum.toUpperCase() === cleanInput);
+                const cleanInput = myRegLogin.trim().toLowerCase();
                 
-                if (found) setMyParticipantData(found);
-                else alert('Nomor Registrasi tidak ditemukan. Pastikan format benar (contoh: GSM-1234)');
+                if (!cleanInput) {
+                    alert('Harap masukkan Nama atau Nomor Registrasi.');
+                    return;
+                }
+
+                // Cari berdasarkan RegNum (Exact Match) ATAU Nama (Partial Match)
+                const matches = participants.filter(p => 
+                    p.regNum.toLowerCase() === cleanInput || 
+                    p.name.toLowerCase().includes(cleanInput)
+                );
+                
+                if (matches.length === 0) {
+                    alert('Data tidak ditemukan. Pastikan nama/nomor benar.');
+                    setSearchResults([]);
+                    setMyParticipantData(null);
+                } else if (matches.length === 1) {
+                    // Jika cuma 1 hasil, langsung tampilkan
+                    setMyParticipantData(matches[0]);
+                    setSearchResults([]);
+                } else {
+                    // Jika lebih dari 1, minta user memilih
+                    setSearchResults(matches);
+                    setMyParticipantData(null);
+                }
             };
 
-            // -- RENDER --
+            // -- RENDER HELPERS --
             if (loading) return (
                 <div className="flex flex-col h-screen items-center justify-center bg-gray-50">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
@@ -539,13 +520,41 @@
             const renderMyQr = () => (
                 <div className="flex flex-col items-center min-h-[80vh] p-6 max-w-md mx-auto">
                     <h2 className="text-2xl font-bold mb-2 text-gray-800">QR Code Saya</h2>
-                    {!myParticipantData ? (
+                    
+                    {!myParticipantData && searchResults.length === 0 && (
                         <div className="w-full bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Nomor Registrasi</label>
-                            <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4" placeholder="Contoh: GSM-1234" />
-                            <button onClick={findMyQR} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">Tampilkan</button>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Nama atau Nomor Registrasi</label>
+                            <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg mb-4" placeholder="Contoh: Budi atau GSM-1234" />
+                            <button onClick={findMyQR} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">Cari QR Saya</button>
                         </div>
-                    ) : (
+                    )}
+
+                    {searchResults.length > 0 && (
+                        <div className="w-full bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+                            <h3 className="font-bold text-lg mb-4 text-center">Pilih Nama Anda:</h3>
+                            <div className="space-y-2">
+                                {searchResults.map(p => (
+                                    <button 
+                                        key={p.id}
+                                        onClick={() => { setMyParticipantData(p); setSearchResults([]); }}
+                                        className="w-full text-left p-3 rounded-lg border hover:bg-blue-50 hover:border-blue-300 flex justify-between items-center transition"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-blue-100 p-2 rounded-full"><User size={16} className="text-blue-600"/></div>
+                                            <div>
+                                                <p className="font-bold text-gray-800">{p.name}</p>
+                                                <p className="text-xs text-gray-500">{p.regNum}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-gray-400">&rarr;</div>
+                                    </button>
+                                ))}
+                            </div>
+                            <button onClick={() => { setSearchResults([]); setMyRegLogin(''); }} className="mt-4 text-sm text-gray-500 underline w-full text-center">Cari Ulang</button>
+                        </div>
+                    )}
+
+                    {myParticipantData && (
                         <div className="flex flex-col items-center animate-fade-in w-full">
                             <div className="bg-white p-6 rounded-3xl shadow-xl border-4 border-blue-50 mb-6">
                                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${myParticipantData.regNum}&color=2563eb`} alt="QR Code" className="w-48 h-48 md:w-64 md:h-64 object-contain" />
