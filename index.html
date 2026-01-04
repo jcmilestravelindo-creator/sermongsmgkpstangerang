@@ -58,7 +58,7 @@
         import { 
             getFirestore, collection, addDoc, onSnapshot, 
             query, updateDoc, doc, serverTimestamp, 
-            deleteDoc 
+            deleteDoc, writeBatch 
         } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
         import { 
             getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken
@@ -68,7 +68,7 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw 
+            LogOut, Camera, AlertCircle, RefreshCw, Upload, FileUp
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
@@ -127,6 +127,10 @@
             const [isAdmin, setIsAdmin] = React.useState(false);
             const [adminPin, setAdminPin] = React.useState('');
             const [isSessionOpen, setIsSessionOpen] = React.useState(false);
+            
+            // State Import CSV
+            const fileInputRef = React.useRef(null);
+            const [importing, setImporting] = React.useState(false);
 
             // State Form & Search
             const [newName, setNewName] = React.useState('');
@@ -164,9 +168,6 @@
                 if(auth) {
                     const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
                         setUser(u);
-                        if (!u) {
-                             // If user is null but no error yet, wait slightly or handle
-                        }
                     });
                     return () => unsubscribeAuth();
                 }
@@ -286,6 +287,99 @@
                 a.href = url;
                 a.download = `Absensi_GSM_${new Date().toLocaleDateString()}.csv`;
                 a.click();
+            };
+
+            // --- LOGIC: IMPORT CSV (Disesuaikan untuk daftar gsm.csv) ---
+            const triggerFileInput = () => {
+                if (fileInputRef.current) fileInputRef.current.click();
+            };
+
+            const handleImportCSV = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!confirm('Import data dari "' + file.name + '"? \nPastikan file memiliki kolom "Nama GSM" di kolom pertama.\nSistem akan otomatis membuat Nomor Registrasi Unik.')) {
+                    e.target.value = null;
+                    return;
+                }
+
+                setImporting(true);
+                const reader = new FileReader();
+
+                reader.onload = async (event) => {
+                    const text = event.target.result;
+                    // Handle Newline untuk Windows (\r\n) dan Unix (\n)
+                    const lines = text.split(/\r\n|\n/);
+                    
+                    let addedCount = 0;
+                    let skipCount = 0;
+                    const promises = [];
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+
+                        const parts = line.split(',');
+                        let name = parts[0] ? parts[0].trim() : '';
+                        
+                        // Membersihkan tanda kutip jika Excel menambahkannya
+                        name = name.replace(/^"|"$/g, '');
+
+                        // Skip Header ('Nama GSM') dan Error Excel ('#VALUE!')
+                        if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#')) {
+                            continue;
+                        }
+
+                        // Cek Duplikat berdasarkan Nama (Case Insensitive)
+                        const isExists = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
+                        
+                        if (!isExists) {
+                            // Generate Reg Num Unik: GSM + 4 digit random
+                            let uniqueReg;
+                            let attempts = 0;
+                            let isRegUnique = false;
+                            
+                            // Pastikan RegNum juga unik
+                            do {
+                                uniqueReg = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
+                                isRegUnique = !participants.some(p => p.regNum === uniqueReg);
+                                attempts++;
+                            } while (!isRegUnique && attempts < 10);
+
+                            // Tambahkan ke Queue Upload
+                            promises.push(
+                                addDoc(getCollectionRef(), {
+                                    name: name,
+                                    regNum: uniqueReg,
+                                    checkedIn: false,
+                                    checkInTime: null
+                                })
+                            );
+                            addedCount++;
+                        } else {
+                            skipCount++;
+                        }
+                    }
+
+                    try {
+                        // Jalankan semua upload secara paralel
+                        await Promise.all(promises);
+                        alert(`Import Selesai!\n\nBerhasil Ditambahkan: ${addedCount} Peserta\nDilewati (Duplikat): ${skipCount} Peserta`);
+                    } catch (err) {
+                        console.error("Gagal import:", err);
+                        alert("Terjadi kesalahan saat menyimpan data. Cek koneksi internet.");
+                    }
+                    
+                    setImporting(false);
+                    e.target.value = null; // Reset input agar bisa upload file yang sama lagi jika perlu
+                };
+
+                reader.onerror = () => {
+                    alert("Gagal membaca file.");
+                    setImporting(false);
+                };
+
+                reader.readAsText(file);
             };
 
             // --- LOGIC: SCANNER ---
@@ -438,11 +532,35 @@
                             </form>
                         </div>
 
-                        <div className="flex flex-wrap gap-3 mb-4">
-                            <button onClick={downloadCSV} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700">
-                                <Download size={16} /> Export Excel (CSV)
+                        {/* TOOLS SECTION */}
+                        <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-gray-100 rounded-xl border border-gray-200">
+                            <h3 className="w-full text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Alat Data</h3>
+                            
+                            <button onClick={downloadCSV} className="flex items-center gap-2 bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                                <Download size={16} /> Export CSV
                             </button>
-                            <button onClick={resetAttendance} className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700">
+                            
+                            <div className="border-l border-gray-300 h-6 mx-1"></div>
+
+                            {/* Tombol Import CSV */}
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                onChange={handleImportCSV} 
+                                accept=".csv" 
+                                className="hidden" 
+                            />
+                            <button 
+                                onClick={triggerFileInput} 
+                                disabled={importing}
+                                className={`flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold transition ${importing ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                            >
+                                <FileUp size={16} /> {importing ? 'Mengimport...' : 'Import Peserta (CSV)'}
+                            </button>
+                            
+                            <div className="flex-1"></div>
+                            
+                            <button onClick={resetAttendance} className="flex items-center gap-2 bg-white text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm hover:bg-red-50">
                                 <RefreshCw size={16} /> Reset Absensi
                             </button>
                         </div>
