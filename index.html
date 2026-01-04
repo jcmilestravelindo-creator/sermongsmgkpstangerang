@@ -319,8 +319,12 @@
                             
                             if (!name || name.toLowerCase() === 'nama gsm' || name.startsWith('#') || name.startsWith('=')) continue;
 
-                            const exists = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
-                            if (!exists) {
+                            // Cek duplikat di DB yang sudah ada
+                            const existsInDB = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
+                            // Cek duplikat di Batch yang sedang dibuat (untuk file CSV yang punya nama ganda)
+                            const existsInBatch = newParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
+
+                            if (!existsInDB && !existsInBatch) {
                                 let uniqueReg = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
                                 newParticipants.push({
                                     name: name,
@@ -332,7 +336,7 @@
                         }
 
                         if (newParticipants.length === 0) {
-                            alert("Tidak ada data baru.");
+                            alert("Tidak ada data baru. (Mungkin semua nama sudah terdaftar)");
                             return;
                         }
 
@@ -376,9 +380,23 @@
             // -- User Functions --
             const handleCheckIn = async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
-                const participant = participants.find(p => p.regNum === regNumInput);
-                if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
-                if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
+                
+                // Normalisasi input: Hapus spasi dan jadikan huruf besar
+                const cleanInput = regNumInput.trim().toUpperCase();
+                
+                const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
+                
+                if (!participant) { 
+                    setScanStatus('error'); 
+                    setScannedName('Data tidak ditemukan'); 
+                    return; 
+                }
+                
+                if (participant.checkedIn) { 
+                    setScanStatus('duplicate'); 
+                    setScannedName(participant.name); 
+                    return; 
+                }
 
                 try {
                     await updateDoc(getDocRef(participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
@@ -388,9 +406,12 @@
 
             const findMyQR = (e) => {
                 e.preventDefault();
-                const found = participants.find(p => p.regNum === myRegLogin);
+                // Normalisasi input: Hapus spasi dan jadikan huruf besar
+                const cleanInput = myRegLogin.trim().toUpperCase();
+                const found = participants.find(p => p.regNum.toUpperCase() === cleanInput);
+                
                 if (found) setMyParticipantData(found);
-                else alert('Nomor Registrasi tidak ditemukan.');
+                else alert('Nomor Registrasi tidak ditemukan. Pastikan format benar (contoh: GSM-1234)');
             };
 
             // -- RENDER HELPERS --
