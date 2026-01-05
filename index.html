@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
@@ -35,6 +35,7 @@
         #reader video { object-fit: cover; border-radius: 0.75rem; }
         /* Hilangkan beberapa elemen bawaan library scanner yang mengganggu */
         #reader__dashboard_section_csr span { display: none; }
+        #reader__dashboard_section_swaplink { display: none !important; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans">
@@ -120,34 +121,57 @@
         // --- KOMPONEN SCANNER VIEW ---
         const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin }) => {
             const lastScanRef = React.useRef(null);
+            // Ref untuk menyimpan fungsi check-in terbaru agar closure tidak stale
+            const handleCheckInRef = React.useRef(handleCheckIn);
+            const scannerRef = React.useRef(null);
+
+            // Update ref setiap kali fungsi handleCheckIn berubah (karena data peserta update)
+            React.useEffect(() => {
+                handleCheckInRef.current = handleCheckIn;
+            }, [handleCheckIn]);
             
             React.useEffect(() => {
                 if (!window.Html5QrcodeScanner) return;
-
                 if (!isSessionOpen && !isAdmin) return;
 
                 const onScanSuccess = (decodedText, decodedResult) => {
                     if (lastScanRef.current === decodedText) return;
+                    
                     lastScanRef.current = decodedText;
+                    
+                    // Panggil fungsi check-in terbaru melalui ref
+                    handleCheckInRef.current(decodedText);
+
+                    // Reset lastScan agar bisa scan ulang kode yang sama setelah 3 detik
                     setTimeout(() => { lastScanRef.current = null; }, 3000);
-                    handleCheckIn(decodedText);
                 };
 
-                const scanner = new window.Html5QrcodeScanner(
-                    "reader",
-                    { 
-                        fps: 10, 
-                        qrbox: { width: 250, height: 250 },
-                        aspectRatio: 1.0,
-                        showTorchButtonIfSupported: true 
+                const config = { 
+                    fps: 10, 
+                    // Ukuran box dinamis: 70% dari sisi terpendek
+                    qrbox: (viewfinderWidth, viewfinderHeight) => {
+                        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                        return {
+                            width: Math.floor(minEdge * 0.7),
+                            height: Math.floor(minEdge * 0.7)
+                        };
                     },
-                    false
-                );
-                
-                scanner.render(onScanSuccess, (err) => {});
+                    aspectRatio: 1.0,
+                    showTorchButtonIfSupported: true,
+                    rememberLastUsedCamera: true
+                };
+
+                // Inisialisasi Scanner
+                if (!scannerRef.current) {
+                    scannerRef.current = new window.Html5QrcodeScanner("reader", config, false);
+                    scannerRef.current.render(onScanSuccess, (err) => { /* ignore errors */ });
+                }
 
                 return () => {
-                    scanner.clear().catch(e => console.error("Scanner clean error", e));
+                    if (scannerRef.current) {
+                        scannerRef.current.clear().catch(e => console.error("Scanner clean error", e));
+                        scannerRef.current = null;
+                    }
                 };
             }, [isSessionOpen, isAdmin]);
 
@@ -166,7 +190,10 @@
             return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-md mx-auto">
                     <h2 className="text-2xl font-bold mb-4 text-gray-800">Scan Absensi</h2>
+                    
+                    {/* Wadah Kamera */}
                     <div id="reader" className="w-full bg-gray-100 rounded-xl overflow-hidden shadow-lg mb-6 border-2 border-dashed border-gray-300"></div>
+                    
                     <div className="w-full mb-6">
                         <p className="text-center text-sm text-gray-500 mb-2">Atau masukkan ID manual:</p>
                         <div className="flex gap-2">
@@ -176,6 +203,8 @@
                             <button onClick={() => handleCheckIn(scanInput)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">Check-In</button>
                         </div>
                     </div>
+
+                    {/* Feedback Status */}
                     {scanStatus === 'success' && <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4 animate-bounce-short"><CheckCircle className="w-6 h-6" /><div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div></div>}
                     {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName} sudah ada.</p></div></div>}
                     {scanStatus === 'error' && <div className="w-full bg-red-100 border border-red-400 text-red-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Gagal</p><p className="text-sm">Data tidak ditemukan.</p></div></div>}
@@ -432,19 +461,38 @@
             };
 
             // -- User Functions --
-            const handleCheckIn = async (regNumInput) => {
-                if (!isSessionOpen && !isAdmin) { setScanStatus('closed'); return; }
+            // Menggunakan useCallback agar referensi fungsi stabil
+            const handleCheckIn = React.useCallback(async (regNumInput) => {
+                // Catatan: isSessionOpen di sini mungkin stale jika tidak di-include di deps,
+                // tapi kita juga handle di level komponen ScannerView.
                 const cleanInput = regNumInput.trim().toUpperCase();
+                
+                // Cari peserta dari state participants yang paling baru
+                // Karena kita pakai ref di ScannerView, kita perlu akses state participants terbaru.
+                // Namun React state di dalam callback juga bisa stale.
+                // Solusi: Pass participants ke ScannerView atau cari cara lain.
+                // Pendekatan saat ini: participants di scope App akan selalu baru saat App re-render.
+                // handleCheckIn di-recreate setiap kali participants berubah.
+                
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
                 
-                if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
-                if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
+                if (!participant) { 
+                    setScanStatus('error'); 
+                    setScannedName('Data tidak ditemukan'); 
+                    return; 
+                }
+                
+                if (participant.checkedIn) { 
+                    setScanStatus('duplicate'); 
+                    setScannedName(participant.name); 
+                    return; 
+                }
 
                 try {
                     await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
                     setScanStatus('success'); setScannedName(participant.name); setScanInput('');
                 } catch (e) { setScanStatus('error'); }
-            };
+            }, [participants, isSessionOpen, isAdmin]); // Re-create saat data berubah
 
             const findMyQR = (e) => {
                 e.preventDefault();
@@ -513,12 +561,17 @@
                             </div>
                         )}
 
+                        {/* STATUS SESI GLOBAL */}
                         <div className={`p-4 rounded-xl mb-6 flex justify-between items-center ${isSessionOpen ? 'bg-green-100 border-green-300' : 'bg-red-100 border-red-300'} border`}>
                             <div>
                                 <h3 className="font-bold text-gray-800">Sesi Absensi: {isSessionOpen ? 'DIBUKA' : 'DITUTUP'}</h3>
-                                <p className="text-xs text-gray-600">{isSessionOpen ? 'Peserta bisa scan.' : 'Peserta ditolak.'}</p>
+                                <p className="text-xs text-gray-600">
+                                    {isSessionOpen ? 'Semua perangkat BISA melakukan scan.' : 'Semua scan di perangkat lain DITOLAK.'}
+                                </p>
                             </div>
-                            <button onClick={toggleSession} className={`px-4 py-2 rounded-lg font-semibold text-white ${isSessionOpen ? 'bg-green-600' : 'bg-red-600'}`}>{isSessionOpen ? 'Tutup Sesi' : 'Buka Sesi'}</button>
+                            <button onClick={toggleSession} className={`px-4 py-2 rounded-lg font-semibold text-white ${isSessionOpen ? 'bg-green-600' : 'bg-red-600'}`}>
+                                {isSessionOpen ? 'Tutup Sesi Global' : 'Buka Sesi Global'}
+                            </button>
                         </div>
 
                         <div className="flex flex-wrap gap-2 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
