@@ -5,20 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sermon GSM GKPS Tangerang</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
-    <!-- Babel untuk JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Library QR Scanner -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
 
-    <!-- Custom Styles -->
     <style>
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -30,9 +25,20 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        /* Styling untuk Scanner Container agar rapi */
-        #reader { width: 100%; border-radius: 0.75rem; overflow: hidden; background-color: #000; min-height: 300px; }
-        #reader video { object-fit: cover; width: 100%; height: 100%; }
+        /* Container Video Scan */
+        .scan-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            overflow: hidden;
+            border-radius: 0.75rem;
+            background: #000;
+        }
+        .scan-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans">
@@ -121,97 +127,78 @@
             </nav>
         );
 
-        // --- SCANNER VIEW (DIRECT CAMERA) ---
+        // --- SCANNER VIEW BARU (MENGGUNAKAN QrScanner) ---
         const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isScanner }) => {
-            const lastScanRef = React.useRef(null);
-            const handleCheckInRef = React.useRef(handleCheckIn);
-            const html5QrCodeRef = React.useRef(null);
+            const videoRef = React.useRef(null);
+            const scannerRef = React.useRef(null);
             const [cameraError, setCameraError] = React.useState(null);
             const [isScanning, setIsScanning] = React.useState(true);
-            
-            React.useEffect(() => { handleCheckInRef.current = handleCheckIn; }, [handleCheckIn]);
-            
+            const lastScanTimeRef = React.useRef(0);
+
+            // Validasi Protokol HTTPS
+            const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
             React.useEffect(() => {
-                // Validasi izin akses fitur
                 if (!isSessionOpen && !isAdmin && !isScanner) return;
-                if (!window.Html5Qrcode) {
-                    setCameraError("Library Scanner belum siap. Refresh halaman.");
+                
+                if (!isSecure) {
+                    setCameraError("Wajib HTTPS! Buka link ini menggunakan https:// (bukan http://) agar kamera HP berfungsi.");
                     return;
                 }
 
-                const startScanning = async () => {
-                    try {
-                        const readerElement = document.getElementById("reader");
-                        if (!readerElement) return;
+                const startScanner = async () => {
+                    if (videoRef.current && !scannerRef.current) {
+                        try {
+                            // Konfigurasi QrScanner Nimiq
+                            scannerRef.current = new QrScanner(
+                                videoRef.current,
+                                (result) => {
+                                    // Debounce scan (mencegah scan beruntun cepat)
+                                    const now = Date.now();
+                                    if (now - lastScanTimeRef.current > 2000) {
+                                        lastScanTimeRef.current = now;
+                                        // result bisa berupa object atau string tergantung versi
+                                        const decodedText = typeof result === 'string' ? result : result.data;
+                                        handleCheckIn(decodedText);
+                                    }
+                                },
+                                {
+                                    onDecodeError: (error) => {
+                                        // Abaikan error frame kosong
+                                    },
+                                    highlightScanRegion: true,
+                                    highlightCodeOutline: true,
+                                    preferredCamera: 'environment' // Paksa kamera belakang
+                                }
+                            );
 
-                        // Bersihkan instance lama jika ada
-                        if (html5QrCodeRef.current) {
-                            try {
-                                await html5QrCodeRef.current.stop();
-                                await html5QrCodeRef.current.clear();
-                            } catch (e) { console.log("Cleanup warning", e); }
+                            await scannerRef.current.start();
+                            setCameraError(null);
+                        } catch (e) {
+                            console.error("Scanner Error:", e);
+                            setCameraError("Gagal akses kamera. Pastikan izin diberikan.");
                         }
-
-                        // Inisialisasi baru
-                        const html5QrCode = new window.Html5Qrcode("reader");
-                        html5QrCodeRef.current = html5QrCode;
-
-                        const config = { 
-                            fps: 10, 
-                            qrbox: { width: 250, height: 250 },
-                            aspectRatio: 1.0
-                        };
-
-                        await html5QrCode.start(
-                            { facingMode: "environment" }, // Paksa Kamera Belakang
-                            config,
-                            (decodedText) => {
-                                // On Success
-                                if (lastScanRef.current === decodedText) return;
-                                lastScanRef.current = decodedText;
-                                // Debounce 3 detik
-                                setTimeout(() => { lastScanRef.current = null; }, 3000);
-                                handleCheckInRef.current(decodedText);
-                            },
-                            (errorMessage) => {
-                                // On Error (Silent)
-                            }
-                        );
-                        setCameraError(null);
-                    } catch (err) {
-                        console.error("Camera Start Error:", err);
-                        // Pesan error ramah pengguna
-                        if (err.name === 'NotAllowedError') {
-                            setCameraError("Izin kamera ditolak. Mohon izinkan akses kamera di pengaturan browser.");
-                        } else if (err.name === 'NotFoundError') {
-                            setCameraError("Kamera tidak ditemukan pada perangkat ini.");
-                        } else if (err.name === 'NotReadableError') {
-                            setCameraError("Kamera sedang digunakan aplikasi lain atau bermasalah.");
-                        } else {
-                            setCameraError("Gagal membuka kamera: " + err.message);
-                        }
-                        setIsScanning(false);
                     }
                 };
 
-                // Delay sedikit untuk memastikan DOM ready
-                const timer = setTimeout(startScanning, 300);
+                // Delay sedikit untuk memastikan render DOM
+                setTimeout(startScanner, 100);
 
+                // Cleanup saat komponen ditutup
                 return () => {
-                    clearTimeout(timer);
-                    if (html5QrCodeRef.current) {
-                        html5QrCodeRef.current.stop().catch(e => console.error("Stop failed", e));
+                    if (scannerRef.current) {
+                        scannerRef.current.stop();
+                        scannerRef.current.destroy();
+                        scannerRef.current = null;
                     }
                 };
-            }, [isSessionOpen, isAdmin, isScanner]); 
+            }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
 
-            // --- RENDER ERROR / CLOSED ---
             if (!isSessionOpen && !isAdmin && !isScanner) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto text-center">
                         <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-6"><Lock className="w-12 h-12 text-gray-400" /></div>
                         <h2 className="text-xl font-bold text-gray-800">Sesi Absensi Ditutup</h2>
-                        <p className="text-gray-500 mt-2">Silakan hubungi panitia.</p>
                     </div>
                 );
             }
@@ -220,24 +207,31 @@
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-md mx-auto">
                     <h2 className="text-2xl font-bold mb-4 text-gray-800">Scan Absensi</h2>
                     
-                    {/* Wadah Kamera */}
-                    <div className="w-full relative bg-black rounded-xl overflow-hidden shadow-lg mb-6 border-2 border-gray-300" style={{ minHeight: '300px' }}>
+                    {/* Container Kamera */}
+                    <div className="scan-container mb-6 shadow-lg border-2 border-gray-300">
                         {cameraError ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4 text-center bg-gray-800">
-                                <CameraOff size={48} className="mb-2 text-red-400" />
-                                <p className="text-sm font-bold text-red-300">Kamera Bermasalah</p>
-                                <p className="text-xs mt-1 text-gray-400">{cameraError}</p>
-                                <button onClick={() => window.location.reload()} className="mt-4 bg-blue-600 px-4 py-2 rounded text-xs font-bold">Refresh Halaman</button>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center bg-gray-900 z-10">
+                                <CameraOff size={48} className="mb-4 text-red-400" />
+                                <p className="font-bold text-red-300 mb-2">Kamera Bermasalah</p>
+                                <p className="text-sm text-gray-300 mb-4">{cameraError}</p>
+                                <button onClick={() => window.location.reload()} className="bg-blue-600 px-4 py-2 rounded font-bold text-sm">Coba Refresh</button>
                             </div>
                         ) : (
-                            <div id="reader" className="w-full h-full"></div>
-                        )}
-                        
-                        {/* Overlay pemanis */}
-                        {!cameraError && (
-                            <div className="absolute inset-0 pointer-events-none border-[30px] border-black/30 flex items-center justify-center">
-                                <div className="w-64 h-64 border-2 border-white/50 rounded-lg animate-pulse"></div>
-                            </div>
+                            <>
+                                {/* Video Element Native - Wajib playsInline untuk iOS */}
+                                <video ref={videoRef} className="scan-video" playsInline muted autoPlay></video>
+                                
+                                {/* Overlay Kotak Scan */}
+                                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                    <div className="w-64 h-64 border-2 border-yellow-400/80 rounded-lg relative">
+                                        <div className="absolute top-0 left-0 w-4 h-4 border-l-4 border-t-4 border-yellow-500 -ml-1 -mt-1"></div>
+                                        <div className="absolute top-0 right-0 w-4 h-4 border-r-4 border-t-4 border-yellow-500 -mr-1 -mt-1"></div>
+                                        <div className="absolute bottom-0 left-0 w-4 h-4 border-l-4 border-b-4 border-yellow-500 -ml-1 -mb-1"></div>
+                                        <div className="absolute bottom-0 right-0 w-4 h-4 border-r-4 border-b-4 border-yellow-500 -mr-1 -mb-1"></div>
+                                    </div>
+                                    <p className="absolute bottom-4 text-white text-xs bg-black/50 px-2 py-1 rounded">Arahkan QR ke kotak</p>
+                                </div>
+                            </>
                         )}
                     </div>
                     
@@ -279,7 +273,6 @@
             const [importing, setImporting] = React.useState(false);
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
-            const [searchQuery, setSearchQuery] = React.useState('');
             const [newScannerName, setNewScannerName] = React.useState('');
             const [newScannerPin, setNewScannerPin] = React.useState('');
 
@@ -402,6 +395,8 @@
                 if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
                 await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
                 setScanStatus('success'); setScannedName(participant.name); setScanInput('');
+                // Reset status after delay
+                setTimeout(() => setScanStatus('idle'), 3000);
             }, [participants, isSessionOpen, isAdmin, isScanner]);
 
             if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
