@@ -56,7 +56,7 @@
         import { 
             getFirestore, collection, addDoc, onSnapshot, 
             query, updateDoc, doc, serverTimestamp, 
-            deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc
+            deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDocs
         } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { 
             getAuth, signInAnonymously, onAuthStateChanged 
@@ -64,7 +64,7 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff, List, Printer
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
@@ -142,6 +142,7 @@
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
+                // LOGIKA PENGAMANAN 1: Jika Sesi Tutup DAN Bukan Admin/Petugas, Matikan Scanner Total
                 if (!isSessionOpen && !isAdmin && !isScanner) return;
                 
                 if (!isSecure) {
@@ -152,12 +153,10 @@
                 const startScanner = async () => {
                     if (videoRef.current && !scannerRef.current) {
                         try {
-                            // --- OPTIMASI SCANNER DISINI ---
                             scannerRef.current = new QrScanner(
                                 videoRef.current,
                                 (result) => {
                                     const now = Date.now();
-                                    // Mengurangi debounce dari 2000ms ke 1500ms agar lebih responsif tapi tetap aman
                                     if (now - lastScanTimeRef.current > 1500) {
                                         lastScanTimeRef.current = now;
                                         const decodedText = typeof result === 'string' ? result : result.data;
@@ -169,8 +168,8 @@
                                     highlightScanRegion: true,
                                     highlightCodeOutline: true,
                                     preferredCamera: 'environment',
-                                    maxScansPerSecond: 25, // Membuat scanner lebih responsif (cek 25x per detik)
-                                    inversionMode: 'both'  // Bisa scan QR putih diatas background gelap
+                                    maxScansPerSecond: 25, 
+                                    inversionMode: 'both' 
                                 }
                             );
                             await scannerRef.current.start();
@@ -193,11 +192,15 @@
                 };
             }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
 
+            // TAMPILAN JIKA SESI TUTUP (Peserta tidak bisa akses kamera)
             if (!isSessionOpen && !isAdmin && !isScanner) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto text-center">
-                        <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-6"><Lock className="w-12 h-12 text-gray-400" /></div>
-                        <h2 className="text-xl font-bold text-gray-800">Sesi Absensi Ditutup</h2>
+                        <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                            <Lock className="w-12 h-12 text-gray-400" />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-800 mb-2">Sesi Absensi Ditutup</h2>
+                        <p className="text-gray-500 text-sm">Peserta tidak dapat melakukan scan saat ini. Hubungi petugas jika acara sudah dimulai.</p>
                     </div>
                 );
             }
@@ -243,7 +246,7 @@
                     {scanStatus === 'success' && <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4 animate-bounce-short"><CheckCircle className="w-6 h-6" /><div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div></div>}
                     {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName} sudah ada.</p></div></div>}
                     {scanStatus === 'error' && <div className="w-full bg-red-100 border border-red-400 text-red-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Gagal</p><p className="text-sm">Data tidak ditemukan.</p></div></div>}
-                    {scanStatus === 'closed' && <div className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><Lock className="w-6 h-6" /><div><p className="font-bold">Absensi Ditutup</p><p className="text-sm">Hubungi Admin.</p></div></div>}
+                    {scanStatus === 'closed' && <div className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><Lock className="w-6 h-6" /><div><p className="font-bold">Absensi Ditutup</p><p className="text-sm">Hanya Admin/Petugas.</p></div></div>}
                 </div>
             );
         };
@@ -352,7 +355,49 @@
                 }
             };
 
-            // FITUR 1: DOWNLOAD QR PER ORANG
+            // FITUR 1: HAPUS SEMUA DATA (RESET DATABASE)
+            const deleteAllData = async () => {
+                if (!confirm('PERINGATAN KERAS!!\n\nAnda akan menghapus SEMUA DATA PESERTA & DATA KEHADIRAN secara permanen.\nData yang dihapus TIDAK BISA DIKEMBALIKAN.\n\nApakah anda yakin??')) return;
+                
+                const confirmation = prompt('Ketik "SETUJU" (Huruf Besar) untuk menghapus semua data peserta:');
+                if (confirmation !== 'SETUJU') {
+                    alert('Penghapusan dibatalkan.');
+                    return;
+                }
+
+                setImporting(true);
+                setImportProgress("Menghapus database...");
+
+                try {
+                    // Gunakan participants yang sudah diload di state untuk mendapatkan ID
+                    // Ini lebih efisien daripada fetch ulang jika data sudah ada di local
+                    const allIds = participants.map(p => p.id);
+                    
+                    const BATCH_SIZE = 400; // Firestore limit 500, pakai 400 biar aman
+                    const chunks = [];
+
+                    for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+                        chunks.push(allIds.slice(i, i + BATCH_SIZE));
+                    }
+
+                    for (let i = 0; i < chunks.length; i++) {
+                        const batch = writeBatch(db);
+                        chunks[i].forEach(id => {
+                            batch.delete(doc(db, COLLECTION_NAME, id));
+                        });
+                        await batch.commit();
+                        setImportProgress(`Menghapus batch ${i+1}/${chunks.length}...`);
+                    }
+                    alert('DATABASE BERHASIL DIKOSONGKAN.');
+                } catch (e) {
+                    console.error(e);
+                    alert('Gagal menghapus: ' + e.message);
+                } finally {
+                    setImporting(false);
+                    setImportProgress("");
+                }
+            };
+
             const downloadQR = async (p) => {
                 try {
                     const response = await fetch(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${p.regNum}`);
@@ -371,8 +416,8 @@
             };
 
             const resetAttendance = async () => {
-                if (!confirm('PERINGATAN: Ini akan mereset status kehadiran SEMUA peserta menjadi belum hadir. Lanjutkan?')) return;
-                setImporting(true); setImportProgress("Mereset...");
+                if (!confirm('PERINGATAN: Ini akan mereset status kehadiran SEMUA peserta menjadi belum hadir. Data peserta TETAP ADA. Lanjutkan?')) return;
+                setImporting(true); setImportProgress("Mereset Kehadiran...");
                 const checkedInParticipants = participants.filter(p => p.checkedIn);
                 const BATCH_SIZE = 450; 
                 const chunks = [];
@@ -384,7 +429,7 @@
                         await batch.commit();
                         setImportProgress(`Reset batch ${i+1}/${chunks.length}...`);
                     }
-                    alert("Reset berhasil.");
+                    alert("Reset kehadiran berhasil.");
                 } catch (error) { console.error(error); alert("Terjadi kesalahan saat reset."); } finally { setImporting(false); setImportProgress(""); }
             };
 
@@ -426,7 +471,9 @@
             };
 
             const handleCheckIn = React.useCallback(async (regNumInput) => {
+                // LOGIKA PENGAMANAN 2: Validasi Sesi di Logic CheckIn
                 if (!isSessionOpen && !isAdmin && !isScanner) { setScanStatus('closed'); return; }
+                
                 const cleanInput = regNumInput.trim().toUpperCase();
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
                 if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
@@ -559,7 +606,10 @@
                                     <button onClick={() => setShowPrintModal(true)} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
                                         <Printer size={16}/> Cetak Semua QR
                                     </button>
-                                    <button onClick={resetAttendance} disabled={importing} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Kehadiran</button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-4 pt-4 border-t border-gray-300">
+                                    <button onClick={resetAttendance} disabled={importing} className="bg-orange-100 text-orange-600 border border-orange-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2"><RefreshCw size={16}/> Reset Kehadiran</button>
+                                    <button onClick={deleteAllData} disabled={importing} className="bg-red-700 text-white border border-red-800 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto hover:bg-red-800"><AlertTriangle size={16}/> HAPUS SEMUA DATA</button>
                                 </div>
                                 {importing && <p className="text-center text-blue-600 font-bold text-sm animate-pulse mb-2">{importProgress}</p>}
                                 <p className="text-[10px] text-gray-400 italic">* File CSV: Nama;Kategori;Kelas (Pemisah titik koma atau koma).</p>
