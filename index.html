@@ -25,7 +25,6 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        /* Container Video Scan */
         .scan-container {
             position: relative;
             width: 100%;
@@ -90,7 +89,6 @@
             return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         };
 
-        // --- NAVBAR ---
         const NavBar = ({ view, setView, isAdmin, isScanner }) => (
             <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
                 <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
@@ -127,22 +125,19 @@
             </nav>
         );
 
-        // --- SCANNER VIEW (QR SCANNER NIMIQ) ---
         const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isScanner }) => {
             const videoRef = React.useRef(null);
             const scannerRef = React.useRef(null);
             const [cameraError, setCameraError] = React.useState(null);
-            const [isScanning, setIsScanning] = React.useState(true);
             const lastScanTimeRef = React.useRef(0);
 
-            // Validasi HTTPS
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
                 if (!isSessionOpen && !isAdmin && !isScanner) return;
                 
                 if (!isSecure) {
-                    setCameraError("Wajib HTTPS! Buka link ini menggunakan https:// (bukan http://) agar kamera HP berfungsi.");
+                    setCameraError("Wajib HTTPS! Buka link ini menggunakan https:// agar kamera HP berfungsi.");
                     return;
                 }
 
@@ -241,7 +236,6 @@
             );
         };
 
-        // --- APP UTAMA ---
         function App() {
             const [user, setUser] = React.useState(null);
             const [participants, setParticipants] = React.useState([]);
@@ -274,7 +268,6 @@
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     setLoading(false);
-                    if (u) setAuthError(null);
                 });
                 if (!auth.currentUser) signInAnonymously(auth).catch(e => setAuthError("Gagal Auth: " + e.message));
                 return () => unsubscribe();
@@ -286,7 +279,7 @@
                     const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
                     data.sort((a, b) => (a.checkedIn === b.checkedIn ? a.name.localeCompare(b.name) : a.checkedIn ? -1 : 1));
                     setParticipants(data);
-                }, (err) => { if (err.code === 'permission-denied') setAuthError("Izin Database Ditolak. Cek Rules."); });
+                });
 
                 const unsubSession = onSnapshot(doc(db, CONFIG_COLLECTION, 'session_status'), (s) => {
                     if (s.exists()) setIsSessionOpen(s.data().open);
@@ -320,7 +313,7 @@
                 if (!newScannerName || !newScannerPin) return;
                 if (scannersList.some(s => s.pin === newScannerPin) || newScannerPin === '1234') { alert('PIN sudah digunakan!'); return; }
                 await addDoc(collection(db, SCANNERS_COLLECTION), { name: newScannerName, pin: newScannerPin });
-                setNewScannerName(''); setNewScannerPin(''); alert('Petugas berhasil ditambahkan');
+                setNewScannerName(''); setNewScannerPin('');
             };
 
             const deleteScannerUser = async (id) => { if(confirm("Hapus petugas ini?")) await deleteDoc(doc(db, SCANNERS_COLLECTION, id)); };
@@ -331,8 +324,6 @@
                 await addDoc(collection(db, COLLECTION_NAME), { name: newName, regNum: newRegNum, category: "Manual", kelas: "-", checkedIn: false, checkInTime: null });
                 setNewName(''); setNewRegNum('');
             };
-
-            const deleteParticipant = async (id) => { if (confirm('Hapus peserta?')) await deleteDoc(doc(db, COLLECTION_NAME, id)); };
 
             const resetAttendance = async () => {
                 if (!confirm('RESET SEMUA KEHADIRAN?')) return;
@@ -346,30 +337,55 @@
                 alert("Reset berhasil.");
             };
 
-            // --- FUNGSI IMPORT KEMBALI KE ASAL (ORIGINAL) ---
+            // --- FUNGSI IMPORT CSV (MODIFIKASI UNTUK DAFTAR GSM.CSV) ---
             const handleImportCSV = async (e) => {
                 const file = e.target.files[0];
-                if (!file || !confirm(`Import "${file.name}"?`)) return;
+                if (!file || !confirm(`Impor data dari "${file.name}"?`)) return;
+                
                 setImporting(true);
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
-                    const lines = ev.target.result.split(/\r\n|\n/);
+                    const text = ev.target.result;
+                    const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== "");
                     const batch = writeBatch(db);
                     let count = 0;
+                    
+                    const existingNames = new Set(participants.map(p => p.name.toLowerCase().trim()));
+                    const existingRegNums = new Set(participants.map(p => p.regNum));
+
                     for (let line of lines) {
-                        const cols = line.split(',');
-                        let name = cols[0]?.replace(/^"|"$/g, '').trim();
-                        // Cek duplikasi manual di sisi client sesuai kode asli
-                        if (!name || name.toLowerCase().includes('nama') || participants.some(p => p.name === name)) continue;
+                        // Mendukung pemisah koma atau titik koma (Excel Indo sering pakai ;)
+                        const cols = line.split(/[;,]/);
+                        let rawName = cols[0]?.replace(/^"|"$/g, '').trim();
+                        
+                        // Validasi: Lewati baris header atau baris tanpa nama
+                        if (!rawName || rawName.toLowerCase().includes('nama') || existingNames.has(rawName.toLowerCase())) continue;
+
+                        // Generate ID Unik GSM-XXXX
+                        let regNum;
+                        do {
+                            regNum = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
+                        } while (existingRegNums.has(regNum));
+                        existingRegNums.add(regNum);
+
                         const ref = doc(collection(db, COLLECTION_NAME));
                         batch.set(ref, {
-                            name: name, category: cols[1]?.replace(/^"|"$/g, '').trim() || "-", kelas: cols[2]?.replace(/^"|"$/g, '').trim() || "-",
-                            regNum: `GSM-${Math.floor(1000 + Math.random() * 9000)}`, checkedIn: false, checkInTime: null
+                            name: rawName,
+                            category: cols[1]?.replace(/^"|"$/g, '').trim() || "GSM",
+                            kelas: cols[2]?.replace(/^"|"$/g, '').trim() || "-",
+                            regNum: regNum,
+                            checkedIn: false,
+                            checkInTime: null
                         });
                         count++;
                     }
-                    if (count > 0) await batch.commit();
-                    alert(`Import ${count} data berhasil.`);
+                    
+                    if (count > 0) {
+                        await batch.commit();
+                        alert(`Berhasil mengimpor ${count} data baru.`);
+                    } else {
+                        alert("Tidak ada data baru yang ditambahkan (mungkin sudah terdaftar).");
+                    }
                     setImporting(false);
                     e.target.value = null;
                 };
@@ -460,11 +476,10 @@
                                                 <button onClick={() => deleteScannerUser(s.id)} className="text-red-500 hover:bg-red-100 p-1 rounded"><Trash2 size={14}/></button>
                                             </div>
                                         ))}
-                                        {scannersList.length === 0 && <p className="text-sm text-gray-400 italic">Belum ada petugas.</p>}
                                     </div>
                                 </div>
                                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
-                                    <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Tambah Peserta</h3>
+                                    <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Tambah Peserta Manual</h3>
                                     <form onSubmit={addParticipant} className="flex gap-2">
                                         <input className="flex-1 p-2 border rounded-lg" placeholder="Nama" value={newName} onChange={e => setNewName(e.target.value)} />
                                         <input className="w-32 p-2 border rounded-lg" placeholder="No. Reg" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} />
@@ -472,9 +487,12 @@
                                     </form>
                                 </div>
                                 <div className="flex flex-wrap gap-2 mb-4">
-                                    <button onClick={() => fileInputRef.current.click()} disabled={importing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"><FileUp size={16}/> Import CSV</button>
-                                    <button onClick={resetAttendance} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Absensi</button>
+                                    <button onClick={() => fileInputRef.current.click()} disabled={importing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                                        <FileUp size={16}/> {importing ? 'Mengimpor...' : 'Import CSV (Base Data)'}
+                                    </button>
+                                    <button onClick={resetAttendance} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Kehadiran</button>
                                 </div>
+                                <p className="text-[10px] text-gray-400 italic">* File CSV harus memiliki kolom: Nama, Kategori, Kelas.</p>
                             </div>
                         )}
 
@@ -484,21 +502,35 @@
                         
                         {view === 'my-qr' && (
                             <div className="flex flex-col items-center min-h-[80vh] p-6 max-w-md mx-auto">
-                                <h2 className="text-2xl font-bold mb-2">QR Code Saya</h2>
+                                <h2 className="text-2xl font-bold mb-2">Cari QR Saya</h2>
                                 {!myParticipantData ? (
                                     <div className="w-full bg-white p-6 rounded-2xl shadow-lg border">
-                                        <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border rounded-lg mb-4" placeholder="Cari Nama / No. Reg" />
+                                        <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border rounded-lg mb-4" placeholder="Ketik Nama / Kelas / ID" />
                                         <button onClick={(e) => {
                                             e.preventDefault();
-                                            const matches = participants.filter(p => p.regNum.toLowerCase() === myRegLogin.toLowerCase() || p.name.toLowerCase().includes(myRegLogin.toLowerCase()));
+                                            const term = myRegLogin.toLowerCase().trim();
+                                            const matches = participants.filter(p => 
+                                                p.regNum.toLowerCase() === term || 
+                                                p.name.toLowerCase().includes(term) ||
+                                                p.kelas.toLowerCase().includes(term)
+                                            );
                                             if (matches.length === 1) setMyParticipantData(matches[0]);
                                             else if (matches.length > 1) setSearchResults(matches);
-                                            else alert('Tidak ditemukan');
-                                        }} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">Cari</button>
+                                            else alert('Data tidak ditemukan');
+                                        }} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">Cari Data</button>
+                                        
                                         {searchResults.length > 0 && (
-                                            <div className="mt-4 space-y-2 max-h-40 overflow-y-auto">
+                                            <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
+                                                <p className="text-xs text-gray-400 mb-1">Hasil pencarian ({searchResults.length}):</p>
                                                 {searchResults.map(p => (
-                                                    <button key={p.id} onClick={() => { setMyParticipantData(p); setSearchResults([]); }} className="w-full text-left p-2 border rounded hover:bg-gray-50 text-sm font-semibold">{p.name}</button>
+                                                    <button key={p.id} onClick={() => { setMyParticipantData(p); setSearchResults([]); }} 
+                                                        className="w-full text-left p-3 border rounded-xl hover:bg-blue-50 transition border-gray-100 flex justify-between items-center">
+                                                        <div>
+                                                            <p className="font-bold text-sm text-gray-800">{p.name}</p>
+                                                            <p className="text-[10px] text-gray-500 uppercase">{p.kelas} - {p.category}</p>
+                                                        </div>
+                                                        <Search size={14} className="text-blue-400" />
+                                                    </button>
                                                 ))}
                                             </div>
                                         )}
@@ -509,9 +541,10 @@
                                             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${myParticipantData.regNum}&color=2563eb`} alt="QR" />
                                         </div>
                                         <h3 className="text-xl font-bold">{myParticipantData.name}</h3>
-                                        <p className="text-blue-600 font-mono mb-4">{myParticipantData.regNum}</p>
+                                        <p className="text-gray-500 text-sm mb-1 uppercase font-semibold">{myParticipantData.kelas} ({myParticipantData.category})</p>
+                                        <p className="text-blue-600 font-mono mb-4 text-xs">{myParticipantData.regNum}</p>
                                         {myParticipantData.checkedIn ? <span className="text-green-600 font-bold bg-green-100 px-3 py-1 rounded-full text-sm">SUDAH HADIR</span> : <span className="text-gray-400 font-bold bg-gray-100 px-3 py-1 rounded-full text-sm">BELUM HADIR</span>}
-                                        <button onClick={() => setMyParticipantData(null)} className="block mt-6 text-sm text-gray-500 mx-auto underline">Cari Lain</button>
+                                        <button onClick={() => { setMyParticipantData(null); setMyRegLogin(''); }} className="block mt-6 text-sm text-gray-500 mx-auto underline">Kembali ke Pencarian</button>
                                     </div>
                                 )}
                             </div>
@@ -519,18 +552,22 @@
 
                         {view === 'live' && (
                             <div className="p-4 max-w-2xl mx-auto">
-                                <h1 className="text-2xl font-bold text-center mb-6">Live Attendance</h1>
+                                <h1 className="text-2xl font-bold text-center mb-6">Kehadiran Live</h1>
                                 <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-blue-50 p-4 rounded-xl text-center"><span className="text-2xl font-bold text-blue-600">{participants.filter(p => p.checkedIn).length}</span><br/><span className="text-xs text-blue-400 uppercase font-bold">Hadir</span></div>
-                                    <div className="bg-gray-50 p-4 rounded-xl text-center"><span className="text-2xl font-bold text-gray-400">{participants.filter(p => !p.checkedIn).length}</span><br/><span className="text-xs text-gray-400 uppercase font-bold">Belum</span></div>
+                                    <div className="bg-blue-50 p-4 rounded-xl text-center"><span className="text-2xl font-bold text-blue-600">{participants.filter(p => p.checkedIn).length}</span><br/><span className="text-xs text-blue-400 uppercase font-bold text-[9px]">Hadir</span></div>
+                                    <div className="bg-gray-50 p-4 rounded-xl text-center"><span className="text-2xl font-bold text-gray-400">{participants.filter(p => !p.checkedIn).length}</span><br/><span className="text-xs text-gray-400 uppercase font-bold text-[9px]">Belum</span></div>
                                 </div>
                                 <div className="space-y-2">
                                     {participants.filter(p => p.checkedIn).map(p => (
                                         <div key={p.id} className="bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center animate-fade-in-up">
-                                            <div><p className="font-bold text-sm">{p.name}</p><p className="text-[10px] text-gray-500">{p.regNum}</p></div>
+                                            <div>
+                                                <p className="font-bold text-sm">{p.name}</p>
+                                                <p className="text-[9px] text-gray-500 uppercase">{p.kelas} • {p.regNum}</p>
+                                            </div>
                                             <span className="text-xs font-mono bg-green-50 text-green-600 px-2 py-1 rounded">{formatTime(p.checkInTime)}</span>
                                         </div>
                                     ))}
+                                    {participants.filter(p => p.checkedIn).length === 0 && <p className="text-center text-gray-400 py-10 italic">Belum ada yang hadir.</p>}
                                 </div>
                             </div>
                         )}
