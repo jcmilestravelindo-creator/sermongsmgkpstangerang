@@ -56,7 +56,7 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff, List
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
@@ -252,10 +252,12 @@
             
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
+            const [importProgress, setImportProgress] = React.useState("");
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
             const [newScannerName, setNewScannerName] = React.useState('');
             const [newScannerPin, setNewScannerPin] = React.useState('');
+            const [adminSearch, setAdminSearch] = React.useState('');
 
             const [myRegLogin, setMyRegLogin] = React.useState('');
             const [myParticipantData, setMyParticipantData] = React.useState(null);
@@ -323,53 +325,89 @@
                 if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; }
                 await addDoc(collection(db, COLLECTION_NAME), { name: newName, regNum: newRegNum, category: "Manual", kelas: "-", checkedIn: false, checkInTime: null });
                 setNewName(''); setNewRegNum('');
+                alert("Peserta berhasil ditambahkan!");
+            };
+
+            // FITUR BARU: Hapus Peserta
+            const deleteParticipant = async (id, name) => {
+                if(confirm(`Yakin ingin menghapus peserta: ${name}?\nData tidak dapat dikembalikan.`)) {
+                    try {
+                        await deleteDoc(doc(db, COLLECTION_NAME, id));
+                    } catch (error) {
+                        alert("Gagal menghapus: " + error.message);
+                    }
+                }
             };
 
             const resetAttendance = async () => {
-                if (!confirm('RESET SEMUA KEHADIRAN?')) return;
+                if (!confirm('PERINGATAN: Ini akan mereset status kehadiran SEMUA peserta menjadi belum hadir. Lanjutkan?')) return;
+                
                 setImporting(true);
-                const batch = writeBatch(db);
-                participants.filter(p => p.checkedIn).forEach(p => {
-                    batch.update(doc(db, COLLECTION_NAME, p.id), { checkedIn: false, checkInTime: null });
-                });
-                await batch.commit();
-                setImporting(false);
-                alert("Reset berhasil.");
+                setImportProgress("Mereset...");
+                
+                // Gunakan Chunking untuk Batch Update (Max 500 per batch)
+                const checkedInParticipants = participants.filter(p => p.checkedIn);
+                const BATCH_SIZE = 450; 
+                const chunks = [];
+                
+                for (let i = 0; i < checkedInParticipants.length; i += BATCH_SIZE) {
+                    chunks.push(checkedInParticipants.slice(i, i + BATCH_SIZE));
+                }
+
+                try {
+                    for (let i = 0; i < chunks.length; i++) {
+                        const batch = writeBatch(db);
+                        chunks[i].forEach(p => {
+                            batch.update(doc(db, COLLECTION_NAME, p.id), { checkedIn: false, checkInTime: null });
+                        });
+                        await batch.commit();
+                        setImportProgress(`Reset batch ${i+1}/${chunks.length}...`);
+                    }
+                    alert("Reset berhasil.");
+                } catch (error) {
+                    console.error(error);
+                    alert("Terjadi kesalahan saat reset.");
+                } finally {
+                    setImporting(false);
+                    setImportProgress("");
+                }
             };
 
-            // --- FUNGSI IMPORT CSV (MODIFIKASI UNTUK DAFTAR GSM.CSV) ---
+            // --- PERBAIKAN FUNGSI IMPORT CSV (BATCH CHUNKING & PARSING) ---
             const handleImportCSV = async (e) => {
                 const file = e.target.files[0];
                 if (!file || !confirm(`Impor data dari "${file.name}"?`)) return;
                 
                 setImporting(true);
+                setImportProgress("Membaca file...");
+                
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     const text = ev.target.result;
                     const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== "");
-                    const batch = writeBatch(db);
-                    let count = 0;
                     
                     const existingNames = new Set(participants.map(p => p.name.toLowerCase().trim()));
                     const existingRegNums = new Set(participants.map(p => p.regNum));
-
+                    
+                    const newDocs = [];
+                    
+                    // Pre-process Data
                     for (let line of lines) {
-                        // Mendukung pemisah koma atau titik koma (Excel Indo sering pakai ;)
+                        // Regex split untuk menangani koma dalam kutip, atau pemisah titik koma
+                        // Fallback simple split jika regex complex gagal, tapi umumnya ; atau , aman
                         const cols = line.split(/[;,]/);
                         let rawName = cols[0]?.replace(/^"|"$/g, '').trim();
                         
-                        // Validasi: Lewati baris header atau baris tanpa nama
+                        // Validasi Header & Data Kosong
                         if (!rawName || rawName.toLowerCase().includes('nama') || existingNames.has(rawName.toLowerCase())) continue;
 
-                        // Generate ID Unik GSM-XXXX
                         let regNum;
                         do {
                             regNum = `GSM-${Math.floor(1000 + Math.random() * 9000)}`;
                         } while (existingRegNums.has(regNum));
-                        existingRegNums.add(regNum);
+                        existingRegNums.add(regNum); // Add temp to prevent dupes in same import
 
-                        const ref = doc(collection(db, COLLECTION_NAME));
-                        batch.set(ref, {
+                        newDocs.push({
                             name: rawName,
                             category: cols[1]?.replace(/^"|"$/g, '').trim() || "GSM",
                             kelas: cols[2]?.replace(/^"|"$/g, '').trim() || "-",
@@ -377,17 +415,42 @@
                             checkedIn: false,
                             checkInTime: null
                         });
-                        count++;
                     }
-                    
-                    if (count > 0) {
-                        await batch.commit();
-                        alert(`Berhasil mengimpor ${count} data baru.`);
-                    } else {
-                        alert("Tidak ada data baru yang ditambahkan (mungkin sudah terdaftar).");
+
+                    if (newDocs.length === 0) {
+                        alert("Tidak ada data baru yang bisa diimpor (mungkin duplikat atau format salah).");
+                        setImporting(false);
+                        setImportProgress("");
+                        e.target.value = null;
+                        return;
                     }
-                    setImporting(false);
-                    e.target.value = null;
+
+                    // CHUNKING WRITE BATCH (Max 500 per batch, kita pakai 450 untuk aman)
+                    const BATCH_SIZE = 450;
+                    const chunks = [];
+                    for (let i = 0; i < newDocs.length; i += BATCH_SIZE) {
+                        chunks.push(newDocs.slice(i, i + BATCH_SIZE));
+                    }
+
+                    try {
+                        for (let i = 0; i < chunks.length; i++) {
+                            setImportProgress(`Mengupload batch ${i+1} dari ${chunks.length}...`);
+                            const batch = writeBatch(db);
+                            chunks[i].forEach(docData => {
+                                const ref = doc(collection(db, COLLECTION_NAME));
+                                batch.set(ref, docData);
+                            });
+                            await batch.commit();
+                        }
+                        alert(`Sukses! Berhasil mengimpor ${newDocs.length} data peserta baru.`);
+                    } catch (err) {
+                        console.error("Import Error:", err);
+                        alert("Gagal Import: " + err.message);
+                    } finally {
+                        setImporting(false);
+                        setImportProgress("");
+                        e.target.value = null;
+                    }
                 };
                 reader.readAsText(file);
             };
@@ -462,6 +525,8 @@
                                         {isSessionOpen ? 'Tutup Sesi' : 'Buka Sesi'}
                                     </button>
                                 </div>
+
+                                {/* Manajemen Petugas */}
                                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
                                     <h3 className="font-bold mb-4 flex items-center gap-2"><UserCog size={18} /> Manajemen Petugas Scan</h3>
                                     <form onSubmit={addScannerUser} className="flex gap-2 mb-4">
@@ -469,7 +534,7 @@
                                         <input className="w-24 p-2 border rounded-lg" placeholder="PIN" value={newScannerPin} onChange={e => setNewScannerPin(e.target.value)} required />
                                         <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg">Tambah</button>
                                     </form>
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 max-h-40 overflow-y-auto">
                                         {scannersList.map(s => (
                                             <div key={s.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
                                                 <div><span className="font-semibold">{s.name}</span> <span className="text-xs text-gray-500 ml-2">PIN: {s.pin}</span></div>
@@ -478,21 +543,45 @@
                                         ))}
                                     </div>
                                 </div>
+                                
+                                {/* Manajemen Peserta */}
                                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
                                     <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Tambah Peserta Manual</h3>
-                                    <form onSubmit={addParticipant} className="flex gap-2">
+                                    <form onSubmit={addParticipant} className="flex gap-2 mb-4">
                                         <input className="flex-1 p-2 border rounded-lg" placeholder="Nama" value={newName} onChange={e => setNewName(e.target.value)} />
                                         <input className="w-32 p-2 border rounded-lg" placeholder="No. Reg" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} />
                                         <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg">Simpan</button>
                                     </form>
+                                    
+                                    <div className="border-t pt-4">
+                                        <h4 className="font-bold text-sm mb-2 flex items-center gap-2"><List size={16}/> Daftar Semua Peserta ({participants.length})</h4>
+                                        <input className="w-full p-2 border rounded-lg mb-2 text-sm" placeholder="Cari Nama untuk dihapus..." value={adminSearch} onChange={e => setAdminSearch(e.target.value)} />
+                                        
+                                        <div className="space-y-1 max-h-60 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
+                                            {participants.filter(p => p.name.toLowerCase().includes(adminSearch.toLowerCase())).map(p => (
+                                                <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded border text-sm">
+                                                    <div>
+                                                        <span className="font-bold">{p.name}</span>
+                                                        <span className="text-gray-500 text-xs ml-2">({p.kelas})</span>
+                                                    </div>
+                                                    <button onClick={() => deleteParticipant(p.id, p.name)} className="text-red-500 hover:bg-red-100 p-1.5 rounded" title="Hapus Peserta">
+                                                        <Trash2 size={14}/>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {participants.length === 0 && <p className="text-center text-xs text-gray-400">Belum ada data peserta.</p>}
+                                        </div>
+                                    </div>
                                 </div>
+
                                 <div className="flex flex-wrap gap-2 mb-4">
-                                    <button onClick={() => fileInputRef.current.click()} disabled={importing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                                        <FileUp size={16}/> {importing ? 'Mengimpor...' : 'Import CSV (Base Data)'}
+                                    <button onClick={() => fileInputRef.current.click()} disabled={importing} className={`bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${importing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <FileUp size={16}/> {importing ? 'Memproses...' : 'Import CSV'}
                                     </button>
-                                    <button onClick={resetAttendance} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Kehadiran</button>
+                                    <button onClick={resetAttendance} disabled={importing} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Kehadiran</button>
                                 </div>
-                                <p className="text-[10px] text-gray-400 italic">* File CSV harus memiliki kolom: Nama, Kategori, Kelas.</p>
+                                {importing && <p className="text-center text-blue-600 font-bold text-sm animate-pulse mb-2">{importProgress}</p>}
+                                <p className="text-[10px] text-gray-400 italic">* File CSV: Nama;Kategori;Kelas (Pemisah titik koma atau koma).</p>
                             </div>
                         )}
 
@@ -509,6 +598,7 @@
                                         <button onClick={(e) => {
                                             e.preventDefault();
                                             const term = myRegLogin.toLowerCase().trim();
+                                            if(!term) return;
                                             const matches = participants.filter(p => 
                                                 p.regNum.toLowerCase() === term || 
                                                 p.name.toLowerCase().includes(term) ||
