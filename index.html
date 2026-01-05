@@ -30,10 +30,9 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        #reader { width: 100%; border: none !important; }
-        #reader video { object-fit: cover; border-radius: 0.75rem; }
-        #reader__dashboard_section_csr span { display: none; }
-        #reader__dashboard_section_swaplink { display: none !important; }
+        /* Styling untuk Scanner Container agar rapi */
+        #reader { width: 100%; border-radius: 0.75rem; overflow: hidden; background-color: #000; min-height: 300px; }
+        #reader video { object-fit: cover; width: 100%; height: 100%; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans">
@@ -52,7 +51,7 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
@@ -77,7 +76,7 @@
 
         const COLLECTION_NAME = 'gkps_participants';
         const CONFIG_COLLECTION = 'gkps_config';
-        const SCANNERS_COLLECTION = 'gkps_scanners'; // Koleksi baru untuk petugas
+        const SCANNERS_COLLECTION = 'gkps_scanners';
 
         const formatTime = (timestamp) => {
             if (!timestamp) return '-';
@@ -85,7 +84,7 @@
             return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         };
 
-        // --- NAVBAR (MODIFIKASI: Sembunyikan Admin & Scan untuk Guest) ---
+        // --- NAVBAR ---
         const NavBar = ({ view, setView, isAdmin, isScanner }) => (
             <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
                 <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
@@ -98,7 +97,6 @@
                         <span className="text-[10px] mt-1">QR Saya</span>
                     </button>
                     
-                    {/* Tampilkan Menu Scan HANYA jika Admin atau Petugas */}
                     {(isAdmin || isScanner) && (
                         <button onClick={() => setView('scanner')} className={`flex flex-col items-center p-2 ${view === 'scanner' ? 'text-blue-600' : 'text-gray-500'}`}>
                             <div className="bg-blue-600 rounded-full p-2 -mt-6 shadow-lg border-4 border-white md:mt-0 md:border-0 md:bg-transparent md:text-inherit">
@@ -113,7 +111,6 @@
                         <span className="text-[10px] mt-1">Live</span>
                     </button>
                     
-                    {/* Tampilkan Menu Admin HANYA jika sudah Login Admin */}
                     {isAdmin && (
                         <button onClick={() => setView('admin')} className={`flex flex-col items-center p-2 ${view === 'admin' ? 'text-blue-600' : 'text-gray-500'}`}>
                             <Lock size={20} />
@@ -124,45 +121,91 @@
             </nav>
         );
 
-        // --- SCANNER VIEW ---
+        // --- SCANNER VIEW (DIRECT CAMERA) ---
         const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isScanner }) => {
             const lastScanRef = React.useRef(null);
             const handleCheckInRef = React.useRef(handleCheckIn);
+            const html5QrCodeRef = React.useRef(null);
+            const [cameraError, setCameraError] = React.useState(null);
+            const [isScanning, setIsScanning] = React.useState(true);
             
             React.useEffect(() => { handleCheckInRef.current = handleCheckIn; }, [handleCheckIn]);
             
             React.useEffect(() => {
-                if (!window.Html5QrcodeScanner) return;
-                // Izin scan: Jika Sesi Buka ATAU User adalah Admin/Petugas
-                const canScan = isSessionOpen || isAdmin || isScanner;
-                if (!canScan) return;
+                // Validasi izin akses fitur
+                if (!isSessionOpen && !isAdmin && !isScanner) return;
+                if (!window.Html5Qrcode) {
+                    setCameraError("Library Scanner belum siap. Refresh halaman.");
+                    return;
+                }
 
-                let scanner = null;
-                const onScanSuccess = (decodedText) => {
-                    if (lastScanRef.current === decodedText) return;
-                    lastScanRef.current = decodedText;
-                    setTimeout(() => { lastScanRef.current = null; }, 3000);
-                    handleCheckInRef.current(decodedText);
+                const startScanning = async () => {
+                    try {
+                        const readerElement = document.getElementById("reader");
+                        if (!readerElement) return;
+
+                        // Bersihkan instance lama jika ada
+                        if (html5QrCodeRef.current) {
+                            try {
+                                await html5QrCodeRef.current.stop();
+                                await html5QrCodeRef.current.clear();
+                            } catch (e) { console.log("Cleanup warning", e); }
+                        }
+
+                        // Inisialisasi baru
+                        const html5QrCode = new window.Html5Qrcode("reader");
+                        html5QrCodeRef.current = html5QrCode;
+
+                        const config = { 
+                            fps: 10, 
+                            qrbox: { width: 250, height: 250 },
+                            aspectRatio: 1.0
+                        };
+
+                        await html5QrCode.start(
+                            { facingMode: "environment" }, // Paksa Kamera Belakang
+                            config,
+                            (decodedText) => {
+                                // On Success
+                                if (lastScanRef.current === decodedText) return;
+                                lastScanRef.current = decodedText;
+                                // Debounce 3 detik
+                                setTimeout(() => { lastScanRef.current = null; }, 3000);
+                                handleCheckInRef.current(decodedText);
+                            },
+                            (errorMessage) => {
+                                // On Error (Silent)
+                            }
+                        );
+                        setCameraError(null);
+                    } catch (err) {
+                        console.error("Camera Start Error:", err);
+                        // Pesan error ramah pengguna
+                        if (err.name === 'NotAllowedError') {
+                            setCameraError("Izin kamera ditolak. Mohon izinkan akses kamera di pengaturan browser.");
+                        } else if (err.name === 'NotFoundError') {
+                            setCameraError("Kamera tidak ditemukan pada perangkat ini.");
+                        } else if (err.name === 'NotReadableError') {
+                            setCameraError("Kamera sedang digunakan aplikasi lain atau bermasalah.");
+                        } else {
+                            setCameraError("Gagal membuka kamera: " + err.message);
+                        }
+                        setIsScanning(false);
+                    }
                 };
 
-                const timerId = setTimeout(() => {
-                    try {
-                        const element = document.getElementById("reader");
-                        if (element) element.innerHTML = ""; 
-                        scanner = new window.Html5QrcodeScanner(
-                            "reader", { fps: 10, qrbox: 250, aspectRatio: 1.0, showTorchButtonIfSupported: true }, false
-                        );
-                        scanner.render(onScanSuccess, () => {});
-                    } catch (e) { console.error("Scanner init error:", e); }
-                }, 150);
+                // Delay sedikit untuk memastikan DOM ready
+                const timer = setTimeout(startScanning, 300);
 
                 return () => {
-                    clearTimeout(timerId);
-                    if (scanner) scanner.clear().catch(e => console.error("Failed to clear", e));
+                    clearTimeout(timer);
+                    if (html5QrCodeRef.current) {
+                        html5QrCodeRef.current.stop().catch(e => console.error("Stop failed", e));
+                    }
                 };
             }, [isSessionOpen, isAdmin, isScanner]); 
 
-            // Tampilan jika akses ditutup
+            // --- RENDER ERROR / CLOSED ---
             if (!isSessionOpen && !isAdmin && !isScanner) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto text-center">
@@ -176,7 +219,28 @@
             return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-md mx-auto">
                     <h2 className="text-2xl font-bold mb-4 text-gray-800">Scan Absensi</h2>
-                    <div id="reader" className="w-full bg-gray-100 rounded-xl overflow-hidden shadow-lg mb-6 border-2 border-dashed border-gray-300"></div>
+                    
+                    {/* Wadah Kamera */}
+                    <div className="w-full relative bg-black rounded-xl overflow-hidden shadow-lg mb-6 border-2 border-gray-300" style={{ minHeight: '300px' }}>
+                        {cameraError ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4 text-center bg-gray-800">
+                                <CameraOff size={48} className="mb-2 text-red-400" />
+                                <p className="text-sm font-bold text-red-300">Kamera Bermasalah</p>
+                                <p className="text-xs mt-1 text-gray-400">{cameraError}</p>
+                                <button onClick={() => window.location.reload()} className="mt-4 bg-blue-600 px-4 py-2 rounded text-xs font-bold">Refresh Halaman</button>
+                            </div>
+                        ) : (
+                            <div id="reader" className="w-full h-full"></div>
+                        )}
+                        
+                        {/* Overlay pemanis */}
+                        {!cameraError && (
+                            <div className="absolute inset-0 pointer-events-none border-[30px] border-black/30 flex items-center justify-center">
+                                <div className="w-64 h-64 border-2 border-white/50 rounded-lg animate-pulse"></div>
+                            </div>
+                        )}
+                    </div>
+                    
                     <div className="w-full mb-6">
                         <p className="text-center text-sm text-gray-500 mb-2">Atau masukkan ID manual:</p>
                         <div className="flex gap-2">
@@ -186,43 +250,39 @@
                             <button onClick={() => handleCheckIn(scanInput)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">Check-In</button>
                         </div>
                     </div>
+
+                    {/* Feedback Status */}
                     {scanStatus === 'success' && <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4 animate-bounce-short"><CheckCircle className="w-6 h-6" /><div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div></div>}
                     {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName} sudah ada.</p></div></div>}
                     {scanStatus === 'error' && <div className="w-full bg-red-100 border border-red-400 text-red-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Gagal</p><p className="text-sm">Data tidak ditemukan.</p></div></div>}
+                    {scanStatus === 'closed' && <div className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><Lock className="w-6 h-6" /><div><p className="font-bold">Absensi Ditutup</p><p className="text-sm">Hubungi Admin.</p></div></div>}
                 </div>
             );
         };
 
         // --- APP UTAMA ---
         function App() {
-            // State Auth & Data
             const [user, setUser] = React.useState(null);
             const [participants, setParticipants] = React.useState([]);
-            const [scannersList, setScannersList] = React.useState([]); // Data Petugas
+            const [scannersList, setScannersList] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
             const [authError, setAuthError] = React.useState(null);
-            const [isConnecting, setIsConnecting] = React.useState(false);
             
-            // State Roles & View
             const [view, setView] = React.useState('home');
             const [isAdmin, setIsAdmin] = React.useState(false);
-            const [isScanner, setIsScanner] = React.useState(false); // State Petugas
-            const [loginPin, setLoginPin] = React.useState(''); // PIN Input Login
-            const [showLoginModal, setShowLoginModal] = React.useState(false); // Modal Login
+            const [isScanner, setIsScanner] = React.useState(false);
+            const [loginPin, setLoginPin] = React.useState('');
+            const [showLoginModal, setShowLoginModal] = React.useState(false);
             const [isSessionOpen, setIsSessionOpen] = React.useState(false);
             
-            // State Form Admin
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
             const [searchQuery, setSearchQuery] = React.useState('');
-            
-            // State Scanner Management (Admin)
             const [newScannerName, setNewScannerName] = React.useState('');
             const [newScannerPin, setNewScannerPin] = React.useState('');
 
-            // State Scanner UI
             const [myRegLogin, setMyRegLogin] = React.useState('');
             const [myParticipantData, setMyParticipantData] = React.useState(null);
             const [searchResults, setSearchResults] = React.useState([]); 
@@ -230,7 +290,6 @@
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
 
-            // -- AUTH & INIT --
             React.useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
@@ -241,24 +300,19 @@
                 return () => unsubscribe();
             }, []);
 
-            // -- DATA SYNC --
             React.useEffect(() => {
                 if (!user) return;
-
-                // 1. Peserta
                 const unsubParticipants = onSnapshot(query(collection(db, COLLECTION_NAME)), (s) => {
                     const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
                     data.sort((a, b) => (a.checkedIn === b.checkedIn ? a.name.localeCompare(b.name) : a.checkedIn ? -1 : 1));
                     setParticipants(data);
                 }, (err) => { if (err.code === 'permission-denied') setAuthError("Izin Database Ditolak. Cek Rules."); });
 
-                // 2. Status Sesi Global
                 const unsubSession = onSnapshot(doc(db, CONFIG_COLLECTION, 'session_status'), (s) => {
                     if (s.exists()) setIsSessionOpen(s.data().open);
                     else setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: true });
                 });
 
-                // 3. Daftar Petugas (Untuk Login & Admin Manage)
                 const unsubScanners = onSnapshot(query(collection(db, SCANNERS_COLLECTION)), (s) => {
                     const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
                     setScannersList(data);
@@ -267,80 +321,38 @@
                 return () => { unsubParticipants(); unsubSession(); unsubScanners(); };
             }, [user]);
 
-            // -- FUNGSI LOGIN SISTEM (Untuk Admin & Petugas) --
             const handleSystemLogin = (e) => {
                 e.preventDefault();
-                // 1. Cek Admin Hardcoded (Master)
                 if (loginPin === '1234') {
-                    setIsAdmin(true);
-                    setIsScanner(true);
-                    setShowLoginModal(false);
-                    setView('admin');
-                    setLoginPin('');
-                    return;
+                    setIsAdmin(true); setIsScanner(true); setShowLoginModal(false); setView('admin'); setLoginPin(''); return;
                 }
-
-                // 2. Cek Petugas dari Database
                 const foundScanner = scannersList.find(s => s.pin === loginPin);
                 if (foundScanner) {
-                    setIsScanner(true);
-                    setIsAdmin(false); // Bukan admin penuh
-                    setShowLoginModal(false);
-                    setView('scanner'); // Redirect ke scan
-                    setLoginPin('');
-                    alert(`Selamat datang, ${foundScanner.name}!`);
-                    return;
+                    setIsScanner(true); setIsAdmin(false); setShowLoginModal(false); setView('scanner'); setLoginPin(''); alert(`Selamat datang, ${foundScanner.name}!`); return;
                 }
-
                 alert('PIN Salah!');
             };
 
-            const logout = () => {
-                setIsAdmin(false);
-                setIsScanner(false);
-                setView('home');
-            };
+            const logout = () => { setIsAdmin(false); setIsScanner(false); setView('home'); };
 
-            // -- ADMIN: SCANNER MANAGEMENT --
             const addScannerUser = async (e) => {
                 e.preventDefault();
                 if (!newScannerName || !newScannerPin) return;
-                
-                // Cek PIN duplikat
-                if (scannersList.some(s => s.pin === newScannerPin) || newScannerPin === '1234') {
-                    alert('PIN sudah digunakan!'); return;
-                }
-
-                try {
-                    await addDoc(collection(db, SCANNERS_COLLECTION), {
-                        name: newScannerName,
-                        pin: newScannerPin,
-                        createdAt: serverTimestamp()
-                    });
-                    setNewScannerName('');
-                    setNewScannerPin('');
-                    alert('Petugas berhasil ditambahkan');
-                } catch (e) { alert("Gagal: " + e.message); }
+                if (scannersList.some(s => s.pin === newScannerPin) || newScannerPin === '1234') { alert('PIN sudah digunakan!'); return; }
+                await addDoc(collection(db, SCANNERS_COLLECTION), { name: newScannerName, pin: newScannerPin });
+                setNewScannerName(''); setNewScannerPin(''); alert('Petugas berhasil ditambahkan');
             };
 
-            const deleteScannerUser = async (id) => {
-                if(!confirm("Hapus petugas ini?")) return;
-                await deleteDoc(doc(db, SCANNERS_COLLECTION, id));
-            };
+            const deleteScannerUser = async (id) => { if(confirm("Hapus petugas ini?")) await deleteDoc(doc(db, SCANNERS_COLLECTION, id)); };
 
-            // -- ADMIN: PARTICIPANT MANAGEMENT --
             const addParticipant = async (e) => {
                 e.preventDefault();
                 if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; }
-                await addDoc(collection(db, COLLECTION_NAME), {
-                    name: newName, regNum: newRegNum, category: "Manual", kelas: "-", checkedIn: false, checkInTime: null
-                });
+                await addDoc(collection(db, COLLECTION_NAME), { name: newName, regNum: newRegNum, category: "Manual", kelas: "-", checkedIn: false, checkInTime: null });
                 setNewName(''); setNewRegNum('');
             };
 
-            const deleteParticipant = async (id) => {
-                if (confirm('Hapus peserta?')) await deleteDoc(doc(db, COLLECTION_NAME, id));
-            };
+            const deleteParticipant = async (id) => { if (confirm('Hapus peserta?')) await deleteDoc(doc(db, COLLECTION_NAME, id)); };
 
             const resetAttendance = async () => {
                 if (!confirm('RESET SEMUA KEHADIRAN?')) return;
@@ -354,7 +366,6 @@
                 alert("Reset berhasil.");
             };
 
-            // -- IMPORT CSV --
             const handleImportCSV = async (e) => {
                 const file = e.target.files[0];
                 if (!file || !confirm(`Import "${file.name}"?`)) return;
@@ -368,14 +379,10 @@
                         const cols = line.split(',');
                         let name = cols[0]?.replace(/^"|"$/g, '').trim();
                         if (!name || name.toLowerCase().includes('nama') || participants.some(p => p.name === name)) continue;
-                        
                         const ref = doc(collection(db, COLLECTION_NAME));
                         batch.set(ref, {
-                            name: name,
-                            category: cols[1]?.replace(/^"|"$/g, '').trim() || "-",
-                            kelas: cols[2]?.replace(/^"|"$/g, '').trim() || "-",
-                            regNum: `GSM-${Math.floor(1000 + Math.random() * 9000)}`,
-                            checkedIn: false, checkInTime: null
+                            name: name, category: cols[1]?.replace(/^"|"$/g, '').trim() || "-", kelas: cols[2]?.replace(/^"|"$/g, '').trim() || "-",
+                            regNum: `GSM-${Math.floor(1000 + Math.random() * 9000)}`, checkedIn: false, checkInTime: null
                         });
                         count++;
                     }
@@ -387,25 +394,16 @@
                 reader.readAsText(file);
             };
 
-            // -- CHECK IN LOGIC --
             const handleCheckIn = React.useCallback(async (regNumInput) => {
-                // Izin check-in: Sesi Buka ATAU Admin ATAU Petugas
-                if (!isSessionOpen && !isAdmin && !isScanner) { 
-                    setScanStatus('closed'); 
-                    return; 
-                }
-                
+                if (!isSessionOpen && !isAdmin && !isScanner) { setScanStatus('closed'); return; }
                 const cleanInput = regNumInput.trim().toUpperCase();
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
-                
                 if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
                 if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
-
                 await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
                 setScanStatus('success'); setScannedName(participant.name); setScanInput('');
             }, [participants, isSessionOpen, isAdmin, isScanner]);
 
-            // -- VIEWS --
             if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
 
             return (
@@ -414,7 +412,6 @@
                     <input type="file" ref={fileInputRef} onChange={handleImportCSV} accept=".csv" className="hidden" />
 
                     <main className="md:pt-8">
-                        {/* HOME VIEW: Tambahan Tombol Login */}
                         {view === 'home' && (
                             <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center max-w-lg mx-auto relative">
                                 {!isAdmin && !isScanner && (
@@ -427,7 +424,6 @@
                                         <LogOut size={16} /> Logout ({isAdmin ? 'Admin' : 'Petugas'})
                                     </button>
                                 )}
-
                                 <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center shadow-lg shadow-blue-200 mb-8 transform rotate-3"><Users className="text-white w-12 h-12" /></div>
                                 <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Sermon GSM</h1>
                                 <p className="text-gray-500 mb-8">GKPS Tangerang</p>
@@ -438,7 +434,6 @@
                             </div>
                         )}
 
-                        {/* MODAL LOGIN */}
                         {showLoginModal && (
                             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                                 <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in">
@@ -455,15 +450,12 @@
                             </div>
                         )}
 
-                        {/* ADMIN VIEW */}
                         {view === 'admin' && isAdmin && (
                             <div className="p-4 pb-24 max-w-4xl mx-auto">
                                 <div className="flex justify-between items-center mb-6">
                                     <h1 className="text-2xl font-bold text-gray-800">Dashboard Admin</h1>
                                     <button onClick={logout} className="text-red-500 flex items-center gap-1 text-xs"><LogOut size={14}/> Logout</button>
                                 </div>
-
-                                {/* MANAJEMEN SESI */}
                                 <div className={`p-4 rounded-xl mb-6 flex justify-between items-center ${isSessionOpen ? 'bg-green-100 border-green-300' : 'bg-red-100 border-red-300'} border`}>
                                     <div><h3 className="font-bold">Sesi Absensi: {isSessionOpen ? 'DIBUKA' : 'DITUTUP'}</h3></div>
                                     <button onClick={async () => { await setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: !isSessionOpen }, { merge: true }); }} 
@@ -471,8 +463,6 @@
                                         {isSessionOpen ? 'Tutup Sesi' : 'Buka Sesi'}
                                     </button>
                                 </div>
-
-                                {/* MANAJEMEN PETUGAS SCANNER (FITUR BARU) */}
                                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
                                     <h3 className="font-bold mb-4 flex items-center gap-2"><UserCog size={18} /> Manajemen Petugas Scan</h3>
                                     <form onSubmit={addScannerUser} className="flex gap-2 mb-4">
@@ -490,8 +480,6 @@
                                         {scannersList.length === 0 && <p className="text-sm text-gray-400 italic">Belum ada petugas.</p>}
                                     </div>
                                 </div>
-
-                                {/* MANAJEMEN PESERTA */}
                                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
                                     <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Tambah Peserta</h3>
                                     <form onSubmit={addParticipant} className="flex gap-2">
@@ -500,7 +488,6 @@
                                         <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg">Simpan</button>
                                     </form>
                                 </div>
-
                                 <div className="flex flex-wrap gap-2 mb-4">
                                     <button onClick={() => fileInputRef.current.click()} disabled={importing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"><FileUp size={16}/> Import CSV</button>
                                     <button onClick={resetAttendance} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Absensi</button>
@@ -508,12 +495,10 @@
                             </div>
                         )}
 
-                        {/* VIEW LAINNYA */}
                         {view === 'scanner' && (
                             <ScannerView scanInput={scanInput} setScanInput={setScanInput} handleCheckIn={handleCheckIn} scanStatus={scanStatus} scannedName={scannedName} isSessionOpen={isSessionOpen} isAdmin={isAdmin} isScanner={isScanner} />
                         )}
                         
-                        {/* MY QR (Sama seperti sebelumnya, disederhanakan) */}
                         {view === 'my-qr' && (
                             <div className="flex flex-col items-center min-h-[80vh] p-6 max-w-md mx-auto">
                                 <h2 className="text-2xl font-bold mb-2">QR Code Saya</h2>
@@ -549,7 +534,6 @@
                             </div>
                         )}
 
-                        {/* LIVE VIEW */}
                         {view === 'live' && (
                             <div className="p-4 max-w-2xl mx-auto">
                                 <h1 className="text-2xl font-bold text-center mb-6">Live Attendance</h1>
