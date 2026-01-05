@@ -152,11 +152,13 @@
                 const startScanner = async () => {
                     if (videoRef.current && !scannerRef.current) {
                         try {
+                            // --- OPTIMASI SCANNER DISINI ---
                             scannerRef.current = new QrScanner(
                                 videoRef.current,
                                 (result) => {
                                     const now = Date.now();
-                                    if (now - lastScanTimeRef.current > 2000) {
+                                    // Mengurangi debounce dari 2000ms ke 1500ms agar lebih responsif tapi tetap aman
+                                    if (now - lastScanTimeRef.current > 1500) {
                                         lastScanTimeRef.current = now;
                                         const decodedText = typeof result === 'string' ? result : result.data;
                                         handleCheckIn(decodedText);
@@ -166,7 +168,9 @@
                                     onDecodeError: (error) => {},
                                     highlightScanRegion: true,
                                     highlightCodeOutline: true,
-                                    preferredCamera: 'environment'
+                                    preferredCamera: 'environment',
+                                    maxScansPerSecond: 25, // Membuat scanner lebih responsif (cek 25x per detik)
+                                    inversionMode: 'both'  // Bisa scan QR putih diatas background gelap
                                 }
                             );
                             await scannerRef.current.start();
@@ -530,6 +534,7 @@
                                                 <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded border text-sm">
                                                     <div>
                                                         <span className="font-bold">{p.name}</span>
+                                                        <span className="text-blue-600 font-bold ml-1">[{p.regNum}]</span>
                                                         <span className="text-gray-500 text-xs ml-2">({p.kelas})</span>
                                                     </div>
                                                     <div className="flex gap-2">
