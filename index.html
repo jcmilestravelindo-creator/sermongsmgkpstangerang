@@ -118,62 +118,60 @@
             </nav>
         );
 
-        // --- KOMPONEN SCANNER VIEW ---
+        // --- KOMPONEN SCANNER VIEW (DIPERBAIKI UNTUK HP) ---
         const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin }) => {
             const lastScanRef = React.useRef(null);
-            // Ref untuk menyimpan fungsi check-in terbaru agar closure tidak stale
             const handleCheckInRef = React.useRef(handleCheckIn);
-            const scannerRef = React.useRef(null);
-
-            // Update ref setiap kali fungsi handleCheckIn berubah (karena data peserta update)
+            
             React.useEffect(() => {
                 handleCheckInRef.current = handleCheckIn;
             }, [handleCheckIn]);
             
             React.useEffect(() => {
                 if (!window.Html5QrcodeScanner) return;
+                // Jika sesi tutup dan bukan admin, tidak perlu init scanner
                 if (!isSessionOpen && !isAdmin) return;
+
+                let scanner = null;
 
                 const onScanSuccess = (decodedText, decodedResult) => {
                     if (lastScanRef.current === decodedText) return;
-                    
                     lastScanRef.current = decodedText;
-                    
-                    // Panggil fungsi check-in terbaru melalui ref
-                    handleCheckInRef.current(decodedText);
-
-                    // Reset lastScan agar bisa scan ulang kode yang sama setelah 3 detik
+                    // Debounce 3 detik
                     setTimeout(() => { lastScanRef.current = null; }, 3000);
+                    handleCheckInRef.current(decodedText);
                 };
 
-                const config = { 
-                    fps: 10, 
-                    // Ukuran box dinamis: 70% dari sisi terpendek
-                    qrbox: (viewfinderWidth, viewfinderHeight) => {
-                        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                        return {
-                            width: Math.floor(minEdge * 0.7),
-                            height: Math.floor(minEdge * 0.7)
-                        };
-                    },
-                    aspectRatio: 1.0,
-                    showTorchButtonIfSupported: true,
-                    rememberLastUsedCamera: true
-                };
+                // Gunakan timeout kecil untuk memastikan elemen DOM #reader sudah siap
+                const timerId = setTimeout(() => {
+                    try {
+                        // Hapus instance lama jika ada sisa (PENTING untuk HP)
+                        const element = document.getElementById("reader");
+                        if (element) element.innerHTML = ""; 
 
-                // Inisialisasi Scanner
-                if (!scannerRef.current) {
-                    scannerRef.current = new window.Html5QrcodeScanner("reader", config, false);
-                    scannerRef.current.render(onScanSuccess, (err) => { /* ignore errors */ });
-                }
+                        scanner = new window.Html5QrcodeScanner(
+                            "reader",
+                            { 
+                                fps: 10, 
+                                qrbox: 250, // Menggunakan angka statis lebih stabil di mobile
+                                aspectRatio: 1.0,
+                                showTorchButtonIfSupported: true
+                            },
+                            /* verbose= */ false
+                        );
+                        scanner.render(onScanSuccess, (err) => { /* ignore */ });
+                    } catch (e) {
+                        console.error("Scanner init error:", e);
+                    }
+                }, 150); // Delay sedikit diperpanjang agar render sempurna
 
                 return () => {
-                    if (scannerRef.current) {
-                        scannerRef.current.clear().catch(e => console.error("Scanner clean error", e));
-                        scannerRef.current = null;
+                    clearTimeout(timerId);
+                    if (scanner) {
+                        scanner.clear().catch(e => console.error("Failed to clear scanner", e));
                     }
                 };
-            }, [isSessionOpen, isAdmin]);
+            }, [isSessionOpen, isAdmin]); 
 
             if (!isSessionOpen && !isAdmin) {
                 return (
