@@ -28,7 +28,7 @@
         .scan-container {
             position: relative;
             width: 100%;
-            height: 300px;
+            height: 350px; /* Sedikit diperbesar untuk laptop */
             overflow: hidden;
             border-radius: 0.75rem;
             background: #000;
@@ -37,6 +37,14 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+        }
+        
+        /* Overlay visual agar user fokus ke tengah */
+        .scan-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.8) 100%);
+            pointer-events: none;
         }
 
         /* CSS KHUSUS UNTUK PRINT / CETAK QR */
@@ -64,7 +72,7 @@
         import { 
             QrCode, Users, CheckCircle, Search, 
             Download, Trash2, Plus, Lock, 
-            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         // --- KONFIGURASI FIREBASE ---
@@ -142,7 +150,6 @@
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
-                // LOGIKA PENGAMANAN 1: Jika Sesi Tutup DAN Bukan Admin/Petugas, Matikan Scanner Total
                 if (!isSessionOpen && !isAdmin && !isScanner) return;
                 
                 if (!isSecure) {
@@ -153,6 +160,7 @@
                 const startScanner = async () => {
                     if (videoRef.current && !scannerRef.current) {
                         try {
+                            // --- OPTIMASI SENSITIVITAS KAMERA LAPTOP ---
                             scannerRef.current = new QrScanner(
                                 videoRef.current,
                                 (result) => {
@@ -167,9 +175,20 @@
                                     onDecodeError: (error) => {},
                                     highlightScanRegion: true,
                                     highlightCodeOutline: true,
-                                    preferredCamera: 'environment',
-                                    maxScansPerSecond: 25, 
-                                    inversionMode: 'both' 
+                                    preferredCamera: 'environment', // Coba kamera belakang dulu
+                                    maxScansPerSecond: 25, // High refresh rate detection
+                                    inversionMode: 'both', // Deteksi Dark Mode QR
+                                    // Hitung area scan fokus ke tengah untuk performa maksimal
+                                    calculateScanRegion: (video) => {
+                                        const smallestDimension = Math.min(video.videoWidth, video.videoHeight);
+                                        const scanRegionSize = Math.round(smallestDimension * 0.7); // Gunakan 70% area tengah
+                                        return {
+                                            x: Math.round((video.videoWidth - scanRegionSize) / 2),
+                                            y: Math.round((video.videoHeight - scanRegionSize) / 2),
+                                            width: scanRegionSize,
+                                            height: scanRegionSize,
+                                        };
+                                    }
                                 }
                             );
                             await scannerRef.current.start();
@@ -192,7 +211,6 @@
                 };
             }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
 
-            // TAMPILAN JIKA SESI TUTUP (Peserta tidak bisa akses kamera)
             if (!isSessionOpen && !isAdmin && !isScanner) {
                 return (
                     <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto text-center">
@@ -220,14 +238,15 @@
                         ) : (
                             <>
                                 <video ref={videoRef} className="scan-video" playsInline muted autoPlay></video>
+                                <div className="scan-overlay"></div> {/* Efek visual fokus */}
                                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                    <div className="w-64 h-64 border-2 border-yellow-400/80 rounded-lg relative">
+                                    <div className="w-64 h-64 border-2 border-yellow-400/80 rounded-lg relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
                                         <div className="absolute top-0 left-0 w-4 h-4 border-l-4 border-t-4 border-yellow-500 -ml-1 -mt-1"></div>
                                         <div className="absolute top-0 right-0 w-4 h-4 border-r-4 border-t-4 border-yellow-500 -mr-1 -mt-1"></div>
                                         <div className="absolute bottom-0 left-0 w-4 h-4 border-l-4 border-b-4 border-yellow-500 -ml-1 -mb-1"></div>
                                         <div className="absolute bottom-0 right-0 w-4 h-4 border-r-4 border-b-4 border-yellow-500 -mr-1 -mb-1"></div>
                                     </div>
-                                    <p className="absolute bottom-4 text-white text-xs bg-black/50 px-2 py-1 rounded">Arahkan QR ke kotak</p>
+                                    <p className="absolute bottom-10 text-white text-xs bg-black/60 px-3 py-1 rounded-full font-bold">Pastikan QR Code di dalam kotak</p>
                                 </div>
                             </>
                         )}
@@ -330,12 +349,38 @@
             const addScannerUser = async (e) => {
                 e.preventDefault();
                 if (!newScannerName || !newScannerPin) return;
+                
+                // VALIDASI PIN 6 DIGIT
+                if (!/^\d{6}$/.test(newScannerPin)) {
+                    alert('PIN Petugas harus 6 digit angka!');
+                    return;
+                }
+
                 if (scannersList.some(s => s.pin === newScannerPin) || newScannerPin === '1234') { alert('PIN sudah digunakan!'); return; }
                 await addDoc(collection(db, SCANNERS_COLLECTION), { name: newScannerName, pin: newScannerPin });
                 setNewScannerName(''); setNewScannerPin('');
+                alert("Petugas berhasil ditambahkan.");
             };
 
             const deleteScannerUser = async (id) => { if(confirm("Hapus petugas ini?")) await deleteDoc(doc(db, SCANNERS_COLLECTION, id)); };
+
+            // FITUR BARU: RESET PIN PETUGAS
+            const resetScannerPin = async (id, currentName) => {
+                const newPin = prompt(`Reset PIN untuk ${currentName}.\nMasukkan 6 digit PIN baru:`);
+                if (!newPin) return;
+                
+                if (!/^\d{6}$/.test(newPin)) {
+                    alert("Gagal! PIN harus 6 digit angka.");
+                    return;
+                }
+                
+                try {
+                    await updateDoc(doc(db, SCANNERS_COLLECTION, id), { pin: newPin });
+                    alert("PIN berhasil direset.");
+                } catch (e) {
+                    alert("Gagal reset: " + e.message);
+                }
+            };
 
             const addParticipant = async (e) => {
                 e.preventDefault();
@@ -355,47 +400,24 @@
                 }
             };
 
-            // FITUR 1: HAPUS SEMUA DATA (RESET DATABASE)
             const deleteAllData = async () => {
                 if (!confirm('PERINGATAN KERAS!!\n\nAnda akan menghapus SEMUA DATA PESERTA & DATA KEHADIRAN secara permanen.\nData yang dihapus TIDAK BISA DIKEMBALIKAN.\n\nApakah anda yakin??')) return;
-                
                 const confirmation = prompt('Ketik "SETUJU" (Huruf Besar) untuk menghapus semua data peserta:');
-                if (confirmation !== 'SETUJU') {
-                    alert('Penghapusan dibatalkan.');
-                    return;
-                }
-
-                setImporting(true);
-                setImportProgress("Menghapus database...");
-
+                if (confirmation !== 'SETUJU') { alert('Penghapusan dibatalkan.'); return; }
+                setImporting(true); setImportProgress("Menghapus database...");
                 try {
-                    // Gunakan participants yang sudah diload di state untuk mendapatkan ID
-                    // Ini lebih efisien daripada fetch ulang jika data sudah ada di local
                     const allIds = participants.map(p => p.id);
-                    
-                    const BATCH_SIZE = 400; // Firestore limit 500, pakai 400 biar aman
+                    const BATCH_SIZE = 400; 
                     const chunks = [];
-
-                    for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
-                        chunks.push(allIds.slice(i, i + BATCH_SIZE));
-                    }
-
+                    for (let i = 0; i < allIds.length; i += BATCH_SIZE) { chunks.push(allIds.slice(i, i + BATCH_SIZE)); }
                     for (let i = 0; i < chunks.length; i++) {
                         const batch = writeBatch(db);
-                        chunks[i].forEach(id => {
-                            batch.delete(doc(db, COLLECTION_NAME, id));
-                        });
+                        chunks[i].forEach(id => { batch.delete(doc(db, COLLECTION_NAME, id)); });
                         await batch.commit();
                         setImportProgress(`Menghapus batch ${i+1}/${chunks.length}...`);
                     }
                     alert('DATABASE BERHASIL DIKOSONGKAN.');
-                } catch (e) {
-                    console.error(e);
-                    alert('Gagal menghapus: ' + e.message);
-                } finally {
-                    setImporting(false);
-                    setImportProgress("");
-                }
+                } catch (e) { console.error(e); alert('Gagal menghapus: ' + e.message); } finally { setImporting(false); setImportProgress(""); }
             };
 
             const downloadQR = async (p) => {
@@ -410,9 +432,7 @@
                     a.click();
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
-                } catch (err) {
-                    alert("Gagal mendownload QR. Periksa koneksi internet.");
-                }
+                } catch (err) { alert("Gagal mendownload QR. Periksa koneksi internet."); }
             };
 
             const resetAttendance = async () => {
@@ -471,9 +491,7 @@
             };
 
             const handleCheckIn = React.useCallback(async (regNumInput) => {
-                // LOGIKA PENGAMANAN 2: Validasi Sesi di Logic CheckIn
                 if (!isSessionOpen && !isAdmin && !isScanner) { setScanStatus('closed'); return; }
-                
                 const cleanInput = regNumInput.trim().toUpperCase();
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
                 if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
@@ -548,14 +566,17 @@
                                     <h3 className="font-bold mb-4 flex items-center gap-2"><UserCog size={18} /> Manajemen Petugas Scan</h3>
                                     <form onSubmit={addScannerUser} className="flex gap-2 mb-4">
                                         <input className="flex-1 p-2 border rounded-lg" placeholder="Nama Petugas" value={newScannerName} onChange={e => setNewScannerName(e.target.value)} required />
-                                        <input className="w-24 p-2 border rounded-lg" placeholder="PIN" value={newScannerPin} onChange={e => setNewScannerPin(e.target.value)} required />
+                                        <input className="w-32 p-2 border rounded-lg" placeholder="6 Digit PIN" value={newScannerPin} onChange={e => setNewScannerPin(e.target.value)} maxLength="6" required />
                                         <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg">Tambah</button>
                                     </form>
                                     <div className="space-y-2 max-h-40 overflow-y-auto">
                                         {scannersList.map(s => (
                                             <div key={s.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
                                                 <div><span className="font-semibold">{s.name}</span> <span className="text-xs text-gray-500 ml-2">PIN: {s.pin}</span></div>
-                                                <button onClick={() => deleteScannerUser(s.id)} className="text-red-500 hover:bg-red-100 p-1 rounded"><Trash2 size={14}/></button>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => resetScannerPin(s.id, s.name)} className="text-blue-500 hover:bg-blue-100 p-1 rounded" title="Reset Password/PIN"><KeyRound size={16}/></button>
+                                                    <button onClick={() => deleteScannerUser(s.id)} className="text-red-500 hover:bg-red-100 p-1 rounded"><Trash2 size={16}/></button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -732,4 +753,3 @@
     </script>
 </body>
 </html>
-
