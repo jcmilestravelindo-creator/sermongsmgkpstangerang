@@ -3,23 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sermon GSM GKPS Tangerang - Ultra Import Edition</title>
+    <title>Sermon GSM GKPS Tangerang</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
 
     <style>
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in-up { animation: fade-in-up 0.4s ease-out; }
-        .custom-loader { border-top-color: #2563eb; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        ::-webkit-scrollbar { width: 5px; }
+        .animate-fade-in { animation: fade-in 0.5s ease-out; }
+        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out; }
+        .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Container Video Scan */
+        .scan-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            overflow: hidden;
+            border-radius: 0.75rem;
+            background: #000;
+        }
+        .scan-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans">
@@ -28,246 +47,522 @@
     <script type="text/babel" data-type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { 
-            getFirestore, collection, onSnapshot, doc, updateDoc, 
-            serverTimestamp, writeBatch, setDoc
+            getFirestore, collection, addDoc, onSnapshot, 
+            query, updateDoc, doc, serverTimestamp, 
+            deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc
         } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
         import { 
-            QrCode, Users, CheckCircle, Lock, LogOut, Camera, FileUp, RefreshCw, Loader2, AlertTriangle, Check
+            getAuth, signInAnonymously, onAuthStateChanged 
+        } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
+        import { 
+            QrCode, Users, CheckCircle, Search, 
+            Download, Trash2, Plus, Lock, 
+            LogOut, Camera, AlertCircle, RefreshCw, FileUp, Wifi, WifiOff, RefreshCw as ReloadIcon, User, LogIn, UserCog, CameraOff
         } from 'https://esm.sh/lucide-react@0.292.0';
 
+        // --- KONFIGURASI FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
             authDomain: "sermongsmgkpstangerang-77b63.firebaseapp.com",
+            databaseURL: "https://sermongsmgkpstangerang-77b63-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "sermongsmgkpstangerang-77b63",
             storageBucket: "sermongsmgkpstangerang-77b63.firebasestorage.app",
-            appId: "1:987409950584:web:b6792a69050f673c6eca8d"
+            messagingSenderId: "987409950584",
+            appId: "1:987409950584:web:b6792a69050f673c6eca8d",
+            measurementId: "G-GE3FRB9D54"
         };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        enableIndexedDbPersistence(db).catch((err) => {
+            console.log("Persistence warning:", err.code);
+        });
+
         const COLLECTION_NAME = 'gkps_participants';
         const CONFIG_COLLECTION = 'gkps_config';
+        const SCANNERS_COLLECTION = 'gkps_scanners';
 
-        // --- SUB-KOMPONEN NAVIGASI ---
-        const NavBar = ({ view, setView, isAdmin }) => (
-            <nav className="fixed bottom-0 left-0 w-full bg-white border-t z-50 md:top-0 md:bottom-auto md:border-b">
-                <div className="flex justify-around items-center h-16 max-w-4xl mx-auto">
-                    <button onClick={() => setView('home')} className={`p-2 ${view === 'home' ? 'text-blue-600' : 'text-gray-400'}`}><Users size={20}/><span className="text-[10px] block">Beranda</span></button>
-                    <button onClick={() => setView('live')} className={`p-2 ${view === 'live' ? 'text-blue-600' : 'text-gray-400'}`}><CheckCircle size={20}/><span className="text-[10px] block">Live</span></button>
-                    {isAdmin && <button onClick={() => setView('admin')} className={`p-2 ${view === 'admin' ? 'text-blue-600' : 'text-gray-400'}`}><Lock size={20}/><span className="text-[10px] block">Admin</span></button>}
+        const formatTime = (timestamp) => {
+            if (!timestamp) return '-';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        };
+
+        // --- NAVBAR ---
+        const NavBar = ({ view, setView, isAdmin, isScanner }) => (
+            <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 shadow-lg z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0">
+                <div className="flex justify-around items-center h-16 max-w-4xl mx-auto px-2">
+                    <button onClick={() => setView('home')} className={`flex flex-col items-center p-2 ${view === 'home' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <Users size={20} />
+                        <span className="text-[10px] mt-1">Beranda</span>
+                    </button>
+                    <button onClick={() => setView('my-qr')} className={`flex flex-col items-center p-2 ${view === 'my-qr' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <QrCode size={20} />
+                        <span className="text-[10px] mt-1">QR Saya</span>
+                    </button>
+                    
+                    {(isAdmin || isScanner) && (
+                        <button onClick={() => setView('scanner')} className={`flex flex-col items-center p-2 ${view === 'scanner' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <div className="bg-blue-600 rounded-full p-2 -mt-6 shadow-lg border-4 border-white md:mt-0 md:border-0 md:bg-transparent md:text-inherit">
+                                <Camera size={24} className="text-white md:text-current"/>
+                            </div>
+                            <span className="text-[10px] mt-1">Scan</span>
+                        </button>
+                    )}
+
+                    <button onClick={() => setView('live')} className={`flex flex-col items-center p-2 ${view === 'live' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <CheckCircle size={20} />
+                        <span className="text-[10px] mt-1">Live</span>
+                    </button>
+                    
+                    {isAdmin && (
+                        <button onClick={() => setView('admin')} className={`flex flex-col items-center p-2 ${view === 'admin' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            <Lock size={20} />
+                            <span className="text-[10px] mt-1">Admin</span>
+                        </button>
+                    )}
                 </div>
             </nav>
         );
 
-        function App() {
-            const [view, setView] = React.useState('home');
-            const [participants, setParticipants] = React.useState([]);
-            const [isAdmin, setIsAdmin] = React.useState(false);
-            const [loading, setLoading] = React.useState(true);
-            const [isSessionOpen, setIsSessionOpen] = React.useState(false);
+        // --- SCANNER VIEW (QR SCANNER NIMIQ) ---
+        const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isScanner }) => {
+            const videoRef = React.useRef(null);
+            const scannerRef = React.useRef(null);
+            const [cameraError, setCameraError] = React.useState(null);
+            const [isScanning, setIsScanning] = React.useState(true);
+            const lastScanTimeRef = React.useRef(0);
 
-            // Import States
-            const [isImporting, setIsImporting] = React.useState(false);
-            const [importProgress, setImportProgress] = React.useState({ current: 0, total: 0 });
-            const fileInputRef = React.useRef(null);
+            // Validasi HTTPS
+            const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
-                onAuthStateChanged(auth, () => setLoading(false));
-                signInAnonymously(auth);
+                if (!isSessionOpen && !isAdmin && !isScanner) return;
                 
-                onSnapshot(collection(db, COLLECTION_NAME), (s) => {
-                    setParticipants(s.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
+                if (!isSecure) {
+                    setCameraError("Wajib HTTPS! Buka link ini menggunakan https:// (bukan http://) agar kamera HP berfungsi.");
+                    return;
+                }
 
-                onSnapshot(doc(db, CONFIG_COLLECTION, 'session_status'), (s) => {
-                    if (s.exists()) setIsSessionOpen(s.data().open);
-                });
-            }, []);
-
-            // --- CORE ENGINE: ADVANCED CSV IMPORT ---
-            const executeImport = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                Papa.parse(file, {
-                    skipEmptyLines: true,
-                    complete: async (results) => {
-                        const rawData = results.data;
-                        if (rawData.length === 0) return;
-
-                        // 1. Sanitasi Data: Hapus header & duplikat lokal
-                        const cleanData = rawData.filter(row => {
-                            const name = row[0]?.trim();
-                            if (!name || ['nama', 'name'].includes(name.toLowerCase())) return false;
-                            // Cek apakah nama sudah ada di database lokal (Optimasi O(1) dengan Set akan lebih baik untuk data >10k)
-                            return !participants.some(p => p.name.toLowerCase() === name.toLowerCase());
-                        });
-
-                        if (cleanData.length === 0) {
-                            alert("Tidak ada data baru untuk diimport (Semua duplikat atau kolom kosong).");
-                            e.target.value = null;
-                            return;
-                        }
-
-                        if (!confirm(`Import ${cleanData.length} peserta baru?`)) {
-                            e.target.value = null;
-                            return;
-                        }
-
-                        setIsImporting(true);
-                        setImportProgress({ current: 0, total: cleanData.length });
-
-                        // 2. Parallel Chunking Logic (Firebase Limit: 500 per batch)
-                        const CHUNK_SIZE = 450; 
-                        const chunks = [];
-                        for (let i = 0; i < cleanData.length; i += CHUNK_SIZE) {
-                            chunks.push(cleanData.slice(i, i + CHUNK_SIZE));
-                        }
-
-                        let processed = 0;
+                const startScanner = async () => {
+                    if (videoRef.current && !scannerRef.current) {
                         try {
-                            // Eksekusi semua chunk secara paralel untuk kecepatan maksimal
-                            await Promise.all(chunks.map(async (chunk) => {
-                                const batch = writeBatch(db);
-                                chunk.forEach(row => {
-                                    const newRef = doc(collection(db, COLLECTION_NAME));
-                                    batch.set(newRef, {
-                                        name: row[0].trim(),
-                                        category: row[1]?.trim() || "Umum",
-                                        kelas: row[2]?.trim() || "-",
-                                        regNum: `GSM-${Math.floor(100000 + Math.random() * 900000)}`,
-                                        checkedIn: false,
-                                        checkInTime: null,
-                                        createdAt: serverTimestamp()
-                                    });
-                                });
-                                await batch.commit();
-                                processed += chunk.length;
-                                setImportProgress(prev => ({ ...prev, current: processed }));
-                            }));
-                            
-                            alert(`Import Berhasil: ${processed} data ditambahkan.`);
-                        } catch (err) {
-                            console.error(err);
-                            alert("Gagal sinkronisasi ke Firebase. Cek koneksi internet.");
-                        } finally {
-                            setIsImporting(false);
-                            e.target.value = null;
+                            scannerRef.current = new QrScanner(
+                                videoRef.current,
+                                (result) => {
+                                    const now = Date.now();
+                                    if (now - lastScanTimeRef.current > 2000) {
+                                        lastScanTimeRef.current = now;
+                                        const decodedText = typeof result === 'string' ? result : result.data;
+                                        handleCheckIn(decodedText);
+                                    }
+                                },
+                                {
+                                    onDecodeError: (error) => {},
+                                    highlightScanRegion: true,
+                                    highlightCodeOutline: true,
+                                    preferredCamera: 'environment'
+                                }
+                            );
+                            await scannerRef.current.start();
+                            setCameraError(null);
+                        } catch (e) {
+                            console.error("Scanner Error:", e);
+                            setCameraError("Gagal akses kamera. Pastikan izin diberikan.");
                         }
                     }
-                });
-            };
+                };
 
-            if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40}/></div>;
+                setTimeout(startScanner, 100);
+
+                return () => {
+                    if (scannerRef.current) {
+                        scannerRef.current.stop();
+                        scannerRef.current.destroy();
+                        scannerRef.current = null;
+                    }
+                };
+            }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
+
+            if (!isSessionOpen && !isAdmin && !isScanner) {
+                return (
+                    <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 max-w-md mx-auto text-center">
+                        <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-6"><Lock className="w-12 h-12 text-gray-400" /></div>
+                        <h2 className="text-xl font-bold text-gray-800">Sesi Absensi Ditutup</h2>
+                    </div>
+                );
+            }
 
             return (
-                <div className="min-h-screen pb-20 md:pt-20">
-                    <NavBar view={view} setView={setView} isAdmin={isAdmin} />
-                    <input type="file" ref={fileInputRef} onChange={executeImport} accept=".csv" className="hidden" />
-
-                    {/* Progress Modal (UX High-End) */}
-                    {isImporting && (
-                        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
-                            <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
-                                <div className="mb-4 relative flex justify-center">
-                                    <div className="w-20 h-20 border-4 border-gray-100 rounded-full"></div>
-                                    <div className="w-20 h-20 border-4 border-transparent border-t-blue-600 rounded-full animate-spin absolute top-0"></div>
-                                    <FileUp className="absolute top-6 text-blue-600" size={32}/>
-                                </div>
-                                <h3 className="text-xl font-bold mb-1">Mengimpor Data</h3>
-                                <p className="text-gray-500 text-sm mb-6">Jangan tutup halaman ini...</p>
-                                <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden mb-2">
-                                    <div className="bg-blue-600 h-full transition-all duration-300" style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}></div>
-                                </div>
-                                <span className="text-xs font-black text-blue-600 tracking-widest">{importProgress.current} / {importProgress.total}</span>
+                <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-md mx-auto">
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800">Scan Absensi</h2>
+                    
+                    <div className="scan-container mb-6 shadow-lg border-2 border-gray-300">
+                        {cameraError ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center bg-gray-900 z-10">
+                                <CameraOff size={48} className="mb-4 text-red-400" />
+                                <p className="font-bold text-red-300 mb-2">Kamera Bermasalah</p>
+                                <p className="text-sm text-gray-300 mb-4">{cameraError}</p>
+                                <button onClick={() => window.location.reload()} className="bg-blue-600 px-4 py-2 rounded font-bold text-sm">Coba Refresh</button>
                             </div>
+                        ) : (
+                            <>
+                                <video ref={videoRef} className="scan-video" playsInline muted autoPlay></video>
+                                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                    <div className="w-64 h-64 border-2 border-yellow-400/80 rounded-lg relative">
+                                        <div className="absolute top-0 left-0 w-4 h-4 border-l-4 border-t-4 border-yellow-500 -ml-1 -mt-1"></div>
+                                        <div className="absolute top-0 right-0 w-4 h-4 border-r-4 border-t-4 border-yellow-500 -mr-1 -mt-1"></div>
+                                        <div className="absolute bottom-0 left-0 w-4 h-4 border-l-4 border-b-4 border-yellow-500 -ml-1 -mb-1"></div>
+                                        <div className="absolute bottom-0 right-0 w-4 h-4 border-r-4 border-b-4 border-yellow-500 -mr-1 -mb-1"></div>
+                                    </div>
+                                    <p className="absolute bottom-4 text-white text-xs bg-black/50 px-2 py-1 rounded">Arahkan QR ke kotak</p>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    
+                    <div className="w-full mb-6">
+                        <p className="text-center text-sm text-gray-500 mb-2">Atau masukkan ID manual:</p>
+                        <div className="flex gap-2">
+                            <input type="text" placeholder="Contoh: GSM-1234" value={scanInput} 
+                                onChange={(e) => setScanInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCheckIn(scanInput); }}
+                                className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <button onClick={() => handleCheckIn(scanInput)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">Check-In</button>
                         </div>
-                    )}
+                    </div>
 
-                    <main className="max-w-4xl mx-auto p-4">
+                    {scanStatus === 'success' && <div className="w-full bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4 animate-bounce-short"><CheckCircle className="w-6 h-6" /><div><p className="font-bold">Berhasil Masuk!</p><p className="text-sm">{scannedName}</p></div></div>}
+                    {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Sudah Hadir</p><p className="text-sm">{scannedName} sudah ada.</p></div></div>}
+                    {scanStatus === 'error' && <div className="w-full bg-red-100 border border-red-400 text-red-800 px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><AlertCircle className="w-6 h-6" /><div><p className="font-bold">Gagal</p><p className="text-sm">Data tidak ditemukan.</p></div></div>}
+                    {scanStatus === 'closed' && <div className="w-full bg-gray-800 text-white px-4 py-3 rounded-xl flex items-center gap-3 mb-4"><Lock className="w-6 h-6" /><div><p className="font-bold">Absensi Ditutup</p><p className="text-sm">Hubungi Admin.</p></div></div>}
+                </div>
+            );
+        };
+
+        // --- APP UTAMA ---
+        function App() {
+            const [user, setUser] = React.useState(null);
+            const [participants, setParticipants] = React.useState([]);
+            const [scannersList, setScannersList] = React.useState([]);
+            const [loading, setLoading] = React.useState(true);
+            const [authError, setAuthError] = React.useState(null);
+            
+            const [view, setView] = React.useState('home');
+            const [isAdmin, setIsAdmin] = React.useState(false);
+            const [isScanner, setIsScanner] = React.useState(false);
+            const [loginPin, setLoginPin] = React.useState('');
+            const [showLoginModal, setShowLoginModal] = React.useState(false);
+            const [isSessionOpen, setIsSessionOpen] = React.useState(false);
+            
+            const fileInputRef = React.useRef(null);
+            const [importing, setImporting] = React.useState(false);
+            const [newName, setNewName] = React.useState('');
+            const [newRegNum, setNewRegNum] = React.useState('');
+            const [newScannerName, setNewScannerName] = React.useState('');
+            const [newScannerPin, setNewScannerPin] = React.useState('');
+
+            const [myRegLogin, setMyRegLogin] = React.useState('');
+            const [myParticipantData, setMyParticipantData] = React.useState(null);
+            const [searchResults, setSearchResults] = React.useState([]); 
+            const [scanInput, setScanInput] = React.useState('');
+            const [scanStatus, setScanStatus] = React.useState('idle'); 
+            const [scannedName, setScannedName] = React.useState('');
+
+            React.useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    setLoading(false);
+                    if (u) setAuthError(null);
+                });
+                if (!auth.currentUser) signInAnonymously(auth).catch(e => setAuthError("Gagal Auth: " + e.message));
+                return () => unsubscribe();
+            }, []);
+
+            React.useEffect(() => {
+                if (!user) return;
+                const unsubParticipants = onSnapshot(query(collection(db, COLLECTION_NAME)), (s) => {
+                    const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
+                    data.sort((a, b) => (a.checkedIn === b.checkedIn ? a.name.localeCompare(b.name) : a.checkedIn ? -1 : 1));
+                    setParticipants(data);
+                }, (err) => { if (err.code === 'permission-denied') setAuthError("Izin Database Ditolak. Cek Rules."); });
+
+                const unsubSession = onSnapshot(doc(db, CONFIG_COLLECTION, 'session_status'), (s) => {
+                    if (s.exists()) setIsSessionOpen(s.data().open);
+                    else setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: true });
+                });
+
+                const unsubScanners = onSnapshot(query(collection(db, SCANNERS_COLLECTION)), (s) => {
+                    const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setScannersList(data);
+                });
+
+                return () => { unsubParticipants(); unsubSession(); unsubScanners(); };
+            }, [user]);
+
+            const handleSystemLogin = (e) => {
+                e.preventDefault();
+                if (loginPin === '1234') {
+                    setIsAdmin(true); setIsScanner(true); setShowLoginModal(false); setView('admin'); setLoginPin(''); return;
+                }
+                const foundScanner = scannersList.find(s => s.pin === loginPin);
+                if (foundScanner) {
+                    setIsScanner(true); setIsAdmin(false); setShowLoginModal(false); setView('scanner'); setLoginPin(''); alert(`Selamat datang, ${foundScanner.name}!`); return;
+                }
+                alert('PIN Salah!');
+            };
+
+            const logout = () => { setIsAdmin(false); setIsScanner(false); setView('home'); };
+
+            const addScannerUser = async (e) => {
+                e.preventDefault();
+                if (!newScannerName || !newScannerPin) return;
+                if (scannersList.some(s => s.pin === newScannerPin) || newScannerPin === '1234') { alert('PIN sudah digunakan!'); return; }
+                await addDoc(collection(db, SCANNERS_COLLECTION), { name: newScannerName, pin: newScannerPin });
+                setNewScannerName(''); setNewScannerPin(''); alert('Petugas berhasil ditambahkan');
+            };
+
+            const deleteScannerUser = async (id) => { if(confirm("Hapus petugas ini?")) await deleteDoc(doc(db, SCANNERS_COLLECTION, id)); };
+
+            const addParticipant = async (e) => {
+                e.preventDefault();
+                if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; }
+                await addDoc(collection(db, COLLECTION_NAME), { name: newName, regNum: newRegNum, category: "Manual", kelas: "-", checkedIn: false, checkInTime: null });
+                setNewName(''); setNewRegNum('');
+            };
+
+            const deleteParticipant = async (id) => { if (confirm('Hapus peserta?')) await deleteDoc(doc(db, COLLECTION_NAME, id)); };
+
+            const resetAttendance = async () => {
+                if (!confirm('RESET SEMUA KEHADIRAN?')) return;
+                setImporting(true);
+                const batch = writeBatch(db);
+                participants.filter(p => p.checkedIn).forEach(p => {
+                    batch.update(doc(db, COLLECTION_NAME, p.id), { checkedIn: false, checkInTime: null });
+                });
+                await batch.commit();
+                setImporting(false);
+                alert("Reset berhasil.");
+            };
+
+            // --- FUNGSI IMPORT YANG SUDAH DIPERBAIKI (ROBUST) ---
+            const handleImportCSV = async (e) => {
+                const file = e.target.files[0];
+                if (!file || !confirm(`Import "${file.name}"?`)) return;
+                
+                setImporting(true);
+                const reader = new FileReader();
+                
+                reader.onload = async (ev) => {
+                    const content = ev.target.result;
+                    const lines = content.split(/\r\n|\n/);
+                    const batch = writeBatch(db);
+                    let count = 0;
+
+                    // OTOMATIS DETEKSI SEPARATOR (KOMA atau TITIK KOMA)
+                    // Ini memperbaiki masalah "Import 0 data" jika file berasal dari Excel Indonesia
+                    const firstLine = lines.find(l => l.trim().length > 0) || "";
+                    const separator = firstLine.includes(";") ? ";" : ",";
+
+                    for (let line of lines) {
+                        if (!line.trim()) continue; // Skip baris kosong
+                        
+                        const cols = line.split(separator);
+                        let name = cols[0]?.replace(/^"|"$/g, '').trim();
+
+                        // Validasi Nama Kosong
+                        if (!name) continue;
+                        
+                        // Skip Header/Judul (Tidak peduli huruf besar/kecil)
+                        if (name.toLowerCase() === 'nama' || name.toLowerCase().includes('name')) continue;
+
+                        // Cek Duplikat (Huruf besar/kecil dianggap sama untuk mencegah duplikasi typo)
+                        const isDuplicate = participants.some(p => p.name.toLowerCase() === name.toLowerCase());
+                        if (isDuplicate) continue;
+
+                        const ref = doc(collection(db, COLLECTION_NAME));
+                        batch.set(ref, {
+                            name: name, 
+                            category: cols[1]?.replace(/^"|"$/g, '').trim() || "-", 
+                            kelas: cols[2]?.replace(/^"|"$/g, '').trim() || "-",
+                            regNum: `GSM-${Math.floor(1000 + Math.random() * 9000)}`, 
+                            checkedIn: false, 
+                            checkInTime: null
+                        });
+                        count++;
+                    }
+                    
+                    if (count > 0) await batch.commit();
+                    alert(`Import ${count} data berhasil.`);
+                    setImporting(false);
+                    e.target.value = null; // Reset input file agar bisa import lagi
+                };
+                reader.readAsText(file);
+            };
+
+            const handleCheckIn = React.useCallback(async (regNumInput) => {
+                if (!isSessionOpen && !isAdmin && !isScanner) { setScanStatus('closed'); return; }
+                const cleanInput = regNumInput.trim().toUpperCase();
+                const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
+                if (!participant) { setScanStatus('error'); setScannedName('Data tidak ditemukan'); return; }
+                if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
+                await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
+                setScanStatus('success'); setScannedName(participant.name); setScanInput('');
+                setTimeout(() => setScanStatus('idle'), 3000);
+            }, [participants, isSessionOpen, isAdmin, isScanner]);
+
+            if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
+
+            return (
+                <div className="min-h-screen bg-gray-50 text-gray-900 font-sans md:pt-16 md:pb-0">
+                    <div className="hidden md:block"><NavBar view={view} setView={setView} isAdmin={isAdmin} isScanner={isScanner} /></div>
+                    <input type="file" ref={fileInputRef} onChange={handleImportCSV} accept=".csv" className="hidden" />
+
+                    <main className="md:pt-8">
                         {view === 'home' && (
-                            <div className="text-center py-20 animate-fade-in-up">
-                                <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-100 italic font-black text-white text-3xl">G</div>
-                                <h1 className="text-3xl font-black mb-2 tracking-tight">Sermon GSM</h1>
-                                <p className="text-gray-500 mb-8">GKPS Tangerang Attendance System</p>
-                                
-                                {!isAdmin ? (
-                                    <button onClick={() => {
-                                        const p = prompt("Masukkan PIN Admin:");
-                                        if (p === '1234') setIsAdmin(true);
-                                    }} className="text-xs text-gray-400 underline">Login Admin</button>
+                            <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center max-w-lg mx-auto relative">
+                                {!isAdmin && !isScanner && (
+                                    <button onClick={() => setShowLoginModal(true)} className="absolute top-0 right-4 text-gray-400 hover:text-blue-600 flex items-center gap-1 text-xs">
+                                        <LogIn size={16} /> Login Petugas
+                                    </button>
+                                )}
+                                {(isAdmin || isScanner) && (
+                                    <button onClick={logout} className="absolute top-0 right-4 text-red-500 hover:text-red-700 flex items-center gap-1 text-xs font-bold">
+                                        <LogOut size={16} /> Logout ({isAdmin ? 'Admin' : 'Petugas'})
+                                    </button>
+                                )}
+                                <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center shadow-lg shadow-blue-200 mb-8 transform rotate-3"><Users className="text-white w-12 h-12" /></div>
+                                <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Sermon GSM</h1>
+                                <p className="text-gray-500 mb-8">GKPS Tangerang</p>
+                                <div className="grid grid-cols-2 gap-4 w-full">
+                                    <button onClick={() => setView('my-qr')} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-blue-500 transition group"><QrCode className="w-8 h-8 text-blue-600 mb-2 group-hover:scale-110 transition" /><span className="block font-semibold">QR Saya</span></button>
+                                    <button onClick={() => setView('live')} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-green-500 transition group"><CheckCircle className="w-8 h-8 text-green-600 mb-2 group-hover:scale-110 transition" /><span className="block font-semibold">Live Hadir</span></button>
+                                </div>
+                            </div>
+                        )}
+
+                        {showLoginModal && (
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in">
+                                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Lock size={20}/> Login Sistem</h3>
+                                    <form onSubmit={handleSystemLogin}>
+                                        <input type="password" value={loginPin} onChange={e => setLoginPin(e.target.value)} 
+                                            className="w-full p-3 border rounded-lg mb-4 text-center text-lg tracking-widest" placeholder="Masukkan PIN" autoFocus />
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-2 text-gray-500 hover:bg-gray-100 rounded-lg">Batal</button>
+                                            <button type="submit" className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Masuk</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'admin' && isAdmin && (
+                            <div className="p-4 pb-24 max-w-4xl mx-auto">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h1 className="text-2xl font-bold text-gray-800">Dashboard Admin</h1>
+                                    <button onClick={logout} className="text-red-500 flex items-center gap-1 text-xs"><LogOut size={14}/> Logout</button>
+                                </div>
+                                <div className={`p-4 rounded-xl mb-6 flex justify-between items-center ${isSessionOpen ? 'bg-green-100 border-green-300' : 'bg-red-100 border-red-300'} border`}>
+                                    <div><h3 className="font-bold">Sesi Absensi: {isSessionOpen ? 'DIBUKA' : 'DITUTUP'}</h3></div>
+                                    <button onClick={async () => { await setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: !isSessionOpen }, { merge: true }); }} 
+                                        className={`px-4 py-2 rounded-lg text-white font-bold ${isSessionOpen ? 'bg-green-600' : 'bg-red-600'}`}>
+                                        {isSessionOpen ? 'Tutup Sesi' : 'Buka Sesi'}
+                                    </button>
+                                </div>
+                                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
+                                    <h3 className="font-bold mb-4 flex items-center gap-2"><UserCog size={18} /> Manajemen Petugas Scan</h3>
+                                    <form onSubmit={addScannerUser} className="flex gap-2 mb-4">
+                                        <input className="flex-1 p-2 border rounded-lg" placeholder="Nama Petugas" value={newScannerName} onChange={e => setNewScannerName(e.target.value)} required />
+                                        <input className="w-24 p-2 border rounded-lg" placeholder="PIN" value={newScannerPin} onChange={e => setNewScannerPin(e.target.value)} required />
+                                        <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg">Tambah</button>
+                                    </form>
+                                    <div className="space-y-2">
+                                        {scannersList.map(s => (
+                                            <div key={s.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
+                                                <div><span className="font-semibold">{s.name}</span> <span className="text-xs text-gray-500 ml-2">PIN: {s.pin}</span></div>
+                                                <button onClick={() => deleteScannerUser(s.id)} className="text-red-500 hover:bg-red-100 p-1 rounded"><Trash2 size={14}/></button>
+                                            </div>
+                                        ))}
+                                        {scannersList.length === 0 && <p className="text-sm text-gray-400 italic">Belum ada petugas.</p>}
+                                    </div>
+                                </div>
+                                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
+                                    <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18} /> Tambah Peserta</h3>
+                                    <form onSubmit={addParticipant} className="flex gap-2">
+                                        <input className="flex-1 p-2 border rounded-lg" placeholder="Nama" value={newName} onChange={e => setNewName(e.target.value)} />
+                                        <input className="w-32 p-2 border rounded-lg" placeholder="No. Reg" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} />
+                                        <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg">Simpan</button>
+                                    </form>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-4">
+                                    <button onClick={() => fileInputRef.current.click()} disabled={importing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"><FileUp size={16}/> Import CSV</button>
+                                    <button onClick={resetAttendance} className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ml-auto"><RefreshCw size={16}/> Reset Absensi</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'scanner' && (
+                            <ScannerView scanInput={scanInput} setScanInput={setScanInput} handleCheckIn={handleCheckIn} scanStatus={scanStatus} scannedName={scannedName} isSessionOpen={isSessionOpen} isAdmin={isAdmin} isScanner={isScanner} />
+                        )}
+                        
+                        {view === 'my-qr' && (
+                            <div className="flex flex-col items-center min-h-[80vh] p-6 max-w-md mx-auto">
+                                <h2 className="text-2xl font-bold mb-2">QR Code Saya</h2>
+                                {!myParticipantData ? (
+                                    <div className="w-full bg-white p-6 rounded-2xl shadow-lg border">
+                                        <input type="text" value={myRegLogin} onChange={(e) => setMyRegLogin(e.target.value)} className="w-full p-3 border rounded-lg mb-4" placeholder="Cari Nama / No. Reg" />
+                                        <button onClick={(e) => {
+                                            e.preventDefault();
+                                            const matches = participants.filter(p => p.regNum.toLowerCase() === myRegLogin.toLowerCase() || p.name.toLowerCase().includes(myRegLogin.toLowerCase()));
+                                            if (matches.length === 1) setMyParticipantData(matches[0]);
+                                            else if (matches.length > 1) setSearchResults(matches);
+                                            else alert('Tidak ditemukan');
+                                        }} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">Cari</button>
+                                        {searchResults.length > 0 && (
+                                            <div className="mt-4 space-y-2 max-h-40 overflow-y-auto">
+                                                {searchResults.map(p => (
+                                                    <button key={p.id} onClick={() => { setMyParticipantData(p); setSearchResults([]); }} className="w-full text-left p-2 border rounded hover:bg-gray-50 text-sm font-semibold">{p.name}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 ) : (
-                                    <div className="bg-green-50 text-green-700 px-4 py-2 rounded-full inline-flex items-center gap-2 text-sm font-bold border border-green-100">
-                                        <Check size={16}/> Mode Admin Aktif
+                                    <div className="text-center animate-fade-in w-full">
+                                        <div className="bg-white p-6 rounded-3xl shadow-xl border-4 border-blue-50 mb-4 inline-block">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${myParticipantData.regNum}&color=2563eb`} alt="QR" />
+                                        </div>
+                                        <h3 className="text-xl font-bold">{myParticipantData.name}</h3>
+                                        <p className="text-blue-600 font-mono mb-4">{myParticipantData.regNum}</p>
+                                        {myParticipantData.checkedIn ? <span className="text-green-600 font-bold bg-green-100 px-3 py-1 rounded-full text-sm">SUDAH HADIR</span> : <span className="text-gray-400 font-bold bg-gray-100 px-3 py-1 rounded-full text-sm">BELUM HADIR</span>}
+                                        <button onClick={() => setMyParticipantData(null)} className="block mt-6 text-sm text-gray-500 mx-auto underline">Cari Lain</button>
                                     </div>
                                 )}
                             </div>
                         )}
 
-                        {view === 'admin' && isAdmin && (
-                            <div className="space-y-6 animate-fade-in-up">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-2xl font-black">Control Panel</h2>
-                                    <button onClick={() => setIsAdmin(false)} className="text-red-500 text-sm font-bold">Logout</button>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-3xl border shadow-sm">
-                                    <h3 className="font-bold mb-4 flex items-center gap-2"><FileUp size={18} className="text-blue-600"/> Import Peserta Massal</h3>
-                                    <p className="text-sm text-gray-500 mb-6">Gunakan file .csv dengan urutan kolom: <br/><b>Nama, Kategori, Kelas</b></p>
-                                    <button 
-                                        onClick={() => fileInputRef.current.click()} 
-                                        className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-blue-100 active:scale-95 transition"
-                                    >
-                                        Pilih File CSV
-                                    </button>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-3xl border shadow-sm">
-                                    <h3 className="font-bold mb-4 flex items-center gap-2"><RefreshCw size={18} className="text-orange-500"/> Sesi & Reset</h3>
-                                    <div className="flex gap-2">
-                                        <button 
-                                            onClick={async () => await setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: !isSessionOpen })}
-                                            className={`flex-1 py-3 rounded-xl font-bold border ${isSessionOpen ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}
-                                        >
-                                            {isSessionOpen ? 'Tutup Absensi' : 'Buka Absensi'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         {view === 'live' && (
-                            <div className="animate-fade-in-up">
-                                <h2 className="text-2xl font-black mb-6 text-center">Live Monitoring</h2>
-                                <div className="grid grid-cols-2 gap-4 mb-8">
-                                    <div className="bg-white p-6 rounded-3xl border text-center shadow-sm">
-                                        <span className="text-4xl font-black text-blue-600">{participants.filter(p => p.checkedIn).length}</span>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Hadir</p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-3xl border text-center shadow-sm">
-                                        <span className="text-4xl font-black text-gray-300">{participants.filter(p => !p.checkedIn).length}</span>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Belum</p>
-                                    </div>
+                            <div className="p-4 max-w-2xl mx-auto">
+                                <h1 className="text-2xl font-bold text-center mb-6">Live Attendance</h1>
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-blue-50 p-4 rounded-xl text-center"><span className="text-2xl font-bold text-blue-600">{participants.filter(p => p.checkedIn).length}</span><br/><span className="text-xs text-blue-400 uppercase font-bold">Hadir</span></div>
+                                    <div className="bg-gray-50 p-4 rounded-xl text-center"><span className="text-2xl font-bold text-gray-400">{participants.filter(p => !p.checkedIn).length}</span><br/><span className="text-xs text-gray-400 uppercase font-bold">Belum</span></div>
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {participants.filter(p => p.checkedIn).map(p => (
-                                        <div key={p.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-                                            <div>
-                                                <p className="font-bold">{p.name}</p>
-                                                <p className="text-[10px] text-gray-400 font-mono">{p.regNum}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase">Success</span>
-                                            </div>
+                                        <div key={p.id} className="bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center animate-fade-in-up">
+                                            <div><p className="font-bold text-sm">{p.name}</p><p className="text-[10px] text-gray-500">{p.regNum}</p></div>
+                                            <span className="text-xs font-mono bg-green-50 text-green-600 px-2 py-1 rounded">{formatTime(p.checkInTime)}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
                     </main>
+
+                    <div className="md:hidden pb-20"></div>
+                    <div className="md:hidden"><NavBar view={view} setView={setView} isAdmin={isAdmin} isScanner={isScanner} /></div>
                 </div>
             );
         }
