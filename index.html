@@ -15,7 +15,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     
-    <!-- PDF GENERATION LIBRARIES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script>
         // SHIM: Memastikan autotable bisa menemukan jsPDF
@@ -1215,6 +1214,56 @@
 
                         {view === 'scanner' && <ScannerView scanInput={scanInput} setScanInput={setScanInput} handleCheckIn={handleCheckIn} scanStatus={scanStatus} scannedName={scannedName} isSessionOpen={isSessionOpen} isAdmin={isAdmin} isManager={isManager} isScanner={isScanner} />}
                         
+                        {/* =======================================================
+                          FIXED LIVE VIEW BLOCK - RESTORED
+                          =======================================================
+                        */}
+                        {view === 'live' && (
+                            <div className="animate-slide-up pb-24 max-w-2xl mx-auto">
+                                <h2 className="text-3xl font-black text-white text-center mb-6 drop-shadow-md">Live Monitoring</h2>
+                                <div className="glass-panel p-2 rounded-2xl flex mb-6 shadow-lg">
+                                    <button onClick={() => setLiveTab('present')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-300 ${liveTab === 'present' ? 'bg-white text-primary shadow-md' : 'text-gray-600 hover:bg-white/50'}`}>
+                                        Hadir ({participants.filter(p => p.checkedIn).length})
+                                    </button>
+                                    <button onClick={() => setLiveTab('absent')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-300 ${liveTab === 'absent' ? 'bg-white text-rose-500 shadow-md' : 'text-gray-600 hover:bg-white/50'}`}>
+                                        Belum ({participants.filter(p => !p.checkedIn).length})
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {displayedParticipants.length > 0 ? (
+                                        displayedParticipants.map(p => (
+                                            <div key={p.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center animate-fade-in hover:shadow-md transition">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${p.checkedIn ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gray-300'}`}>
+                                                        {p.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-sm">{p.name}</h4>
+                                                        <p className="text-xs text-gray-500 font-mono">{p.regNum} • {p.kelas}</p>
+                                                    </div>
+                                                </div>
+                                                {p.checkedIn && (
+                                                    <div className="text-right">
+                                                        <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full block mb-1">HADIR</span>
+                                                        <span className="text-[10px] text-gray-400 font-mono">{formatTime(p.checkInTime)}</span>
+                                                    </div>
+                                                )}
+                                                {!p.checkedIn && (
+                                                     <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-2 py-1 rounded-full">BELUM</span>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-12 glass-panel rounded-3xl">
+                                            <p className="text-gray-500 font-medium italic">Tidak ada data untuk kategori ini.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        {/* END FIXED LIVE VIEW */}
+
                         {view === 'my-qr' && (
                             <div className="flex flex-col items-center min-h-[70vh] p-6 max-w-md mx-auto animate-fade-in">
                                 <h2 className="text-3xl font-bold mb-6 text-white drop-shadow-md">Cari QR Saya</h2>
