@@ -75,7 +75,8 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         @media print {
-            body { background: white !important; background-image: none !important; color: black !important; }
+            body { background: white !important; background-image: none !important; color: black !important                    
+  ; }
             .glass-panel { background: white !important; border: 1px solid #ddd !important; box-shadow: none !important; }
             .no-print { display: none !important; }
             .page-break { page-break-inside: avoid; break-inside: avoid; }
@@ -87,9 +88,11 @@
 
     <script type="text/babel" data-type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
+        // Added getDocs for backup feature
+        import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
-        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart, ChevronDown, Briefcase } from 'https://esm.sh/lucide-react@0.292.0';
+        // Added Archive icon for backup
+        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart, ChevronDown, Briefcase, Archive } from 'https://esm.sh/lucide-react@0.292.0';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
@@ -110,6 +113,8 @@
         const COLLECTION_NAME = 'gkps_participants';
         const CONFIG_COLLECTION = 'gkps_config';
         const SCANNERS_COLLECTION = 'gkps_scanners';
+        // NEW COLLECTION FOR HISTORY
+        const LOGS_COLLECTION = 'gkps_attendance_logs';
         const MASTER_RESET_CODE = "GKPS2026"; 
 
         // DAFTAR KELAS TETAP
@@ -738,8 +743,8 @@
                 reader.readAsText(file);
             };
 
+            // MODIFIED: handleCheckIn with LOGGING Feature
             const handleCheckIn = React.useCallback(async (regNumInput) => {
-                // MODIFIED RULE: Admin and Manager can scan even if closed
                 if (!isSessionOpen && !isAdmin && !isManager) { 
                     setScanStatus('closed'); 
                     return; 
@@ -748,9 +753,28 @@
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
                 if (!participant) { setScanStatus('error'); setScannedName(''); return; }
                 if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
-                await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
-                setScanStatus('success'); setScannedName(participant.name); setScanInput('');
-                setTimeout(() => setScanStatus('idle'), 3000);
+                
+                try {
+                    // 1. Update status peserta (fitur lama)
+                    await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
+                    
+                    // 2. NEW FEATURE: Simpan ke Log History (agar ada daftar hadir setiap bulan/sesi)
+                    await addDoc(collection(db, LOGS_COLLECTION), {
+                        regNum: participant.regNum,
+                        name: participant.name,
+                        kelas: participant.kelas,
+                        timestamp: serverTimestamp(),
+                        month: new Date().getMonth() + 1,
+                        year: new Date().getFullYear(),
+                        dateString: new Date().toISOString()
+                    });
+
+                    setScanStatus('success'); setScannedName(participant.name); setScanInput('');
+                    setTimeout(() => setScanStatus('idle'), 3000);
+                } catch (e) {
+                    console.error("Check-in error:", e);
+                    setScanStatus('error');
+                }
             }, [participants, isSessionOpen, isAdmin, isManager]);
 
             // --- FITUR EXPORT 1: EXCEL ---
@@ -796,6 +820,44 @@
                 });
 
                 doc.save("Laporan_GSM_GKPS.pdf");
+            };
+
+            // --- FITUR BARU: BACKUP SYSTEM (JSON) ---
+            const handleSystemBackup = async () => {
+                if (!confirm("Download backup lengkap database (Peserta + Riwayat)?")) return;
+                setImporting(true); setImportProgress("Downloading Backup...");
+                
+                try {
+                    // 1. Get Log History
+                    const logsSnapshot = await getDocs(collection(db, LOGS_COLLECTION));
+                    const logsData = logsSnapshot.docs.map(doc => doc.data());
+
+                    // 2. Get Participants
+                    const participantsData = participants; // already in state
+
+                    const backupObject = {
+                        backupDate: new Date().toISOString(),
+                        totalParticipants: participantsData.length,
+                        totalLogs: logsData.length,
+                        participants: participantsData,
+                        attendanceLogs: logsData
+                    };
+
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupObject));
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", dataStr);
+                    downloadAnchorNode.setAttribute("download", "BACKUP_SYSTEM_GKPS_" + new Date().toISOString().slice(0,10) + ".json");
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+
+                    alert("Backup berhasil di-download!");
+                } catch (error) {
+                    console.error(error);
+                    alert("Gagal melakukan backup: " + error.message);
+                } finally {
+                    setImporting(false); setImportProgress("");
+                }
             };
 
             const downloadQR = async (p) => {
@@ -958,7 +1020,6 @@
 
                                     <div className={`glass-panel p-6 rounded-3xl shadow-lg ${!isAdmin ? 'md:col-span-2' : ''}`}>
                                         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg"><Users className="text-secondary"/> Kelola Peserta</h3>
-                                        {/* MODIFIED: Add manual participant with class and category */}
                                         <form onSubmit={addParticipant} className="flex flex-col gap-2 mb-4">
                                             <div className="flex gap-2">
                                                 <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Nama Lengkap" value={newName} onChange={e => setNewName(e.target.value)} required/>
@@ -1007,6 +1068,9 @@
                                         <button onClick={handleExportXLS} className="bg-green-100 text-green-700 hover:bg-green-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><FileSpreadsheet size={20}/> Excel Laporan</button>
                                         <button onClick={handleExportPDF} className="bg-red-100 text-red-700 hover:bg-red-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><FileText size={20}/> PDF Laporan</button>
                                         
+                                        {/* NEW BACKUP BUTTON */}
+                                        <button onClick={handleSystemBackup} className="bg-blue-100 text-blue-700 hover:bg-blue-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition border border-blue-200 shadow-sm"><Archive size={20}/> Backup Data</button>
+
                                         <button onClick={resetAttendance} className="bg-orange-100 text-orange-700 hover:bg-orange-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><RefreshCw size={20}/> Reset Hadir</button>
                                         {isAdmin && <button onClick={deleteAllData} className="bg-rose-100 text-rose-700 hover:bg-rose-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><AlertTriangle size={20}/> Hapus Semua</button>}
                                     </div>
