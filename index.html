@@ -16,6 +16,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
     <script>
         tailwind.config = {
             theme: {
@@ -88,7 +93,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
-        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle } from 'https://esm.sh/lucide-react@0.292.0';
+        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp } from 'https://esm.sh/lucide-react@0.292.0';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
@@ -117,29 +122,48 @@
             return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         };
 
-        // --- KOMPONEN GRAFIK (UPDATED) ---
+        const formatDate = (timestamp) => {
+            if (!timestamp) return '-';
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        };
+
+        // --- KOMPONEN GRAFIK (UPDATED WITH MONTHLY TREND) ---
         const StatsChart = ({ participants }) => {
             const pieRef = React.useRef(null);
             const barRef = React.useRef(null);
+            const trendRef = React.useRef(null); // Ref untuk chart baru
             const chartInstancePie = React.useRef(null);
             const chartInstanceBar = React.useRef(null);
+            const chartInstanceTrend = React.useRef(null);
 
             React.useEffect(() => {
                 if (!participants.length) return;
 
-                // Data Total
+                // 1. Data Total
                 const total = participants.length;
                 const present = participants.filter(p => p.checkedIn).length;
                 const absent = total - present;
 
-                // Data Per Kelas (Stacked Analysis)
+                // 2. Data Per Kelas
                 const rawClasses = participants.map(p => p.kelas || 'Tanpa Kelas');
                 const classes = [...new Set(rawClasses)].sort();
-                
                 const dataPresent = classes.map(cls => participants.filter(p => (p.kelas || 'Tanpa Kelas') === cls && p.checkedIn).length);
                 const dataAbsent = classes.map(cls => participants.filter(p => (p.kelas || 'Tanpa Kelas') === cls && !p.checkedIn).length);
 
-                // PIE CHART
+                // 3. Data Trend Bulanan (FITUR BARU)
+                const monthCounts = {};
+                participants.filter(p => p.checkedIn && p.checkInTime).forEach(p => {
+                    const date = p.checkInTime.toDate ? p.checkInTime.toDate() : new Date(p.checkInTime);
+                    const monthKey = date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+                    monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
+                });
+                
+                // Urutkan bulan secara kronologis (sederhana)
+                const monthLabels = Object.keys(monthCounts);
+                const monthData = Object.values(monthCounts);
+
+                // --- CHART 1: PIE ---
                 if (pieRef.current) {
                     if (chartInstancePie.current) chartInstancePie.current.destroy();
                     chartInstancePie.current = new Chart(pieRef.current, {
@@ -152,19 +176,11 @@
                                 hoverOffset: 4
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'bottom' },
-                                title: { display: false }
-                            },
-                            cutout: '70%'
-                        }
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, title: { display: false } }, cutout: '70%' }
                     });
                 }
 
-                // BAR CHART (Stacked for Analysis)
+                // --- CHART 2: STACKED BAR PER KELAS ---
                 if (barRef.current) {
                     if (chartInstanceBar.current) chartInstanceBar.current.destroy();
                     chartInstanceBar.current = new Chart(barRef.current, {
@@ -176,29 +192,33 @@
                                 { label: 'Belum', data: dataAbsent, backgroundColor: '#cbd5e1', borderRadius: 4, stack: 'Stack 0' }
                             ]
                         },
+                        options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'top', align: 'end' } } }
+                    });
+                }
+
+                // --- CHART 3: TREND BULANAN (FITUR BARU) ---
+                if (trendRef.current) {
+                    if (chartInstanceTrend.current) chartInstanceTrend.current.destroy();
+                    chartInstanceTrend.current = new Chart(trendRef.current, {
+                        type: 'line',
+                        data: {
+                            labels: monthLabels.length > 0 ? monthLabels : ['Bulan Ini'],
+                            datasets: [{
+                                label: 'Total Kehadiran',
+                                data: monthData.length > 0 ? monthData : [present],
+                                borderColor: '#06b6d4',
+                                backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 6,
+                                pointHoverRadius: 8
+                            }]
+                        },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            interaction: {
-                                mode: 'index',
-                                intersect: false,
-                            },
-                            scales: {
-                                x: { stacked: true, grid: { display: false } },
-                                y: { stacked: true, beginAtZero: true }
-                            },
-                            plugins: {
-                                legend: { position: 'top', align: 'end' },
-                                tooltip: {
-                                    callbacks: {
-                                        footer: (tooltipItems) => {
-                                            let total = 0;
-                                            tooltipItems.forEach((item) => { total += item.parsed.y; });
-                                            return 'Total: ' + total + ' Peserta';
-                                        }
-                                    }
-                                }
-                            }
+                            scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } },
+                            plugins: { legend: { display: false } }
                         }
                     });
                 }
@@ -206,32 +226,46 @@
                 return () => {
                     if (chartInstancePie.current) chartInstancePie.current.destroy();
                     if (chartInstanceBar.current) chartInstanceBar.current.destroy();
+                    if (chartInstanceTrend.current) chartInstanceTrend.current.destroy();
                 };
             }, [participants]);
 
             return (
-                <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <div className="space-y-6 mb-8">
+                    {/* Baris 1: Analisa Trend (Full Width) */}
                     <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><PieChart size={20}/></div>
-                            <h3 className="font-bold text-gray-700">Persentase Kehadiran</h3>
+                            <div className="bg-cyan-100 p-2 rounded-lg text-cyan-600"><TrendingUp size={20}/></div>
+                            <h3 className="font-bold text-gray-700">Analisa Trend Kehadiran (Per Bulan)</h3>
                         </div>
-                        <div className="h-64 relative">
-                            <canvas ref={pieRef}></canvas>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-3xl font-black text-gray-800">{participants.length > 0 ? Math.round((participants.filter(p=>p.checkedIn).length / participants.length) * 100) : 0}%</span>
-                                <span className="text-xs text-gray-500 font-bold uppercase">Kehadiran</span>
-                            </div>
+                        <div className="h-64 w-full">
+                            <canvas ref={trendRef}></canvas>
                         </div>
                     </div>
-                    
-                    <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
-                         <div className="flex items-center gap-2 mb-4">
-                            <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BarChart3 size={20}/></div>
-                            <h3 className="font-bold text-gray-700">Analisa Peserta per Kelas</h3>
+
+                    {/* Baris 2: Pie & Bar (Grid) */}
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
+                            <div className="flex items-center gap-2 mb-4">
+                                <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><PieChart size={20}/></div>
+                                <h3 className="font-bold text-gray-700">Persentase Saat Ini</h3>
+                            </div>
+                            <div className="h-56 relative">
+                                <canvas ref={pieRef}></canvas>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <span className="text-3xl font-black text-gray-800">{participants.length > 0 ? Math.round((participants.filter(p=>p.checkedIn).length / participants.length) * 100) : 0}%</span>
+                                </div>
+                            </div>
                         </div>
-                        <div className="h-64">
-                            <canvas ref={barRef}></canvas>
+                        
+                        <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
+                             <div className="flex items-center gap-2 mb-4">
+                                <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BarChart3 size={20}/></div>
+                                <h3 className="font-bold text-gray-700">Analisa Per Kelas</h3>
+                            </div>
+                            <div className="h-56">
+                                <canvas ref={barRef}></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -347,8 +381,7 @@
             const [isSessionOpen, setIsSessionOpen] = React.useState(false);
             const [adminConfig, setAdminConfig] = React.useState({ pin: '1234' });
             
-            // STATE BARU UNTUK TAB LIVE
-            const [liveTab, setLiveTab] = React.useState('present'); // 'present' | 'absent'
+            const [liveTab, setLiveTab] = React.useState('present');
 
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
@@ -524,6 +557,51 @@
                 setTimeout(() => setScanStatus('idle'), 3000);
             }, [participants, isSessionOpen, isAdmin, isScanner]);
 
+            // --- FITUR EXPORT 1: EXCEL ---
+            const handleExportXLS = () => {
+                const dataToExport = participants.map(p => ({
+                    "Nama": p.name,
+                    "ID Registrasi": p.regNum,
+                    "Kelas": p.kelas,
+                    "Status": p.checkedIn ? "Hadir" : "Belum",
+                    "Waktu Check-in": p.checkedIn ? formatTime(p.checkInTime) + " - " + formatDate(p.checkInTime) : "-"
+                }));
+                const ws = XLSX.utils.json_to_sheet(dataToExport);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Laporan Kehadiran");
+                XLSX.writeFile(wb, "Laporan_GSM_GKPS.xlsx");
+            };
+
+            // --- FITUR EXPORT 2: PDF ---
+            const handleExportPDF = () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                doc.setFontSize(18);
+                doc.text("Laporan Kehadiran Sermon GSM GKPS", 14, 20);
+                doc.setFontSize(12);
+                doc.text(`Total Peserta: ${participants.length} | Hadir: ${participants.filter(p=>p.checkedIn).length}`, 14, 30);
+                
+                const tableData = participants.map(p => [
+                    p.regNum, 
+                    p.name, 
+                    p.kelas, 
+                    p.checkedIn ? "Hadir" : "Absen", 
+                    p.checkedIn ? formatTime(p.checkInTime) : "-"
+                ]);
+
+                doc.autoTable({
+                    head: [['ID', 'Nama', 'Kelas', 'Status', 'Waktu']],
+                    body: tableData,
+                    startY: 35,
+                    theme: 'grid',
+                    styles: { fontSize: 8 },
+                    headStyles: { fillColor: [79, 70, 229] }
+                });
+
+                doc.save("Laporan_GSM_GKPS.pdf");
+            };
+
             const downloadQR = async (p) => {
                 try {
                     const res = await fetch(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${p.regNum}`);
@@ -534,7 +612,6 @@
                 } catch (err) { alert("Gagal download."); }
             };
 
-            // DATA FILTER UNTUK LIVE VIEW (FITUR 2)
             const displayedParticipants = React.useMemo(() => {
                 if (liveTab === 'present') {
                     return participants.filter(p => p.checkedIn);
@@ -678,11 +755,16 @@
 
                                 <div className="mt-8 glass-panel p-6 rounded-3xl shadow-lg">
                                     <h3 className="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wider text-center opacity-70">Tindakan Lanjutan</h3>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                                         <button onClick={() => fileInputRef.current.click()} disabled={importing} className="bg-gray-100 text-gray-700 hover:bg-gray-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition disabled:opacity-50"><FileUp size={20}/> Import CSV</button>
                                         <button onClick={() => setShowPrintModal(true)} className="bg-purple-100 text-purple-700 hover:bg-purple-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><Printer size={20}/> Cetak QR</button>
+                                        
+                                        {/* EXPORT BUTTONS */}
+                                        <button onClick={handleExportXLS} className="bg-green-100 text-green-700 hover:bg-green-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><FileSpreadsheet size={20}/> Excel Laporan</button>
+                                        <button onClick={handleExportPDF} className="bg-red-100 text-red-700 hover:bg-red-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><FileText size={20}/> PDF Laporan</button>
+                                        
                                         <button onClick={resetAttendance} className="bg-orange-100 text-orange-700 hover:bg-orange-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><RefreshCw size={20}/> Reset Hadir</button>
-                                        <button onClick={deleteAllData} className="bg-red-100 text-red-700 hover:bg-red-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><AlertTriangle size={20}/> Hapus Semua</button>
+                                        <button onClick={deleteAllData} className="bg-rose-100 text-rose-700 hover:bg-rose-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><AlertTriangle size={20}/> Hapus Semua</button>
                                     </div>
                                     {importing && <p className="text-center text-primary font-bold text-xs mt-3 animate-pulse">{importProgress}</p>}
                                 </div>
