@@ -75,8 +75,7 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         @media print {
-            body { background: white !important; background-image: none !important; color: black !important                    
-  ; }
+            body { background: white !important; background-image: none !important; color: black !important; }
             .glass-panel { background: white !important; border: 1px solid #ddd !important; box-shadow: none !important; }
             .no-print { display: none !important; }
             .page-break { page-break-inside: avoid; break-inside: avoid; }
@@ -466,11 +465,14 @@
                                     lastScanTimeRef.current = now;
                                     handleCheckIn(typeof result === 'string' ? result : result.data);
                                 }
-                            }, { highlightScanRegion: true, highlightCodeOutline: true, preferredCamera: 'environment', maxScansPerSecond: 30, inversionMode: 'both',
-                                calculateScanRegion: (video) => {
-                                    const size = Math.round(Math.min(video.videoWidth, video.videoHeight) * 0.85);
-                                    return { x: Math.round((video.videoWidth - size) / 2), y: Math.round((video.videoHeight - size) / 2), width: size, height: size };
-                                }
+                            }, { 
+                                // UPGRADED SENSITIVITY CONFIGURATION FOR LAPTOP
+                                highlightScanRegion: false, // Matikan highlight default, gunakan UI kustom
+                                highlightCodeOutline: true, // Aktifkan outline merah untuk feedback deteksi
+                                preferredCamera: 'environment', 
+                                maxScansPerSecond: 30, // Kecepatan scan maksimum
+                                inversionMode: 'both', // Deteksi background gelap/terang
+                                // calculateScanRegion DIHAPUS agar scanner membaca FULL FRAME (Sensitivitas Maksimal)
                             });
                             await scannerRef.current.start();
                             setCameraError(null);
