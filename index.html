@@ -118,6 +118,7 @@
         };
 
         // --- KOMPONEN GRAFIK (BARU) ---
+        // Menampilkan Analisa Kehadiran & Breakdown Per Kelas
         const StatsChart = ({ participants }) => {
             const pieRef = React.useRef(null);
             const barRef = React.useRef(null);
@@ -127,19 +128,19 @@
             React.useEffect(() => {
                 if (!participants.length) return;
 
-                // Hitung Data
+                // 1. Hitung Data Total
                 const total = participants.length;
                 const present = participants.filter(p => p.checkedIn).length;
                 const absent = total - present;
 
-                // Group Data Berdasarkan Kelas
+                // 2. Hitung Data Per Kelas
                 const rawClasses = participants.map(p => p.kelas || 'Tanpa Kelas');
                 const classes = [...new Set(rawClasses)].sort();
                 
                 const dataPresent = classes.map(cls => participants.filter(p => (p.kelas || 'Tanpa Kelas') === cls && p.checkedIn).length);
                 const dataAbsent = classes.map(cls => participants.filter(p => (p.kelas || 'Tanpa Kelas') === cls && !p.checkedIn).length);
 
-                // 1. PIE CHART (Donut)
+                // --- Render PIE CHART (Donut) ---
                 if (pieRef.current) {
                     if (chartInstancePie.current) chartInstancePie.current.destroy();
                     chartInstancePie.current = new Chart(pieRef.current, {
@@ -164,7 +165,7 @@
                     });
                 }
 
-                // 2. BAR CHART (Stacked)
+                // --- Render BAR CHART (Stacked) ---
                 if (barRef.current) {
                     if (chartInstanceBar.current) chartInstanceBar.current.destroy();
                     chartInstanceBar.current = new Chart(barRef.current, {
@@ -190,6 +191,7 @@
                     });
                 }
 
+                // Cleanup chart saat komponen unmount
                 return () => {
                     if (chartInstancePie.current) chartInstancePie.current.destroy();
                     if (chartInstanceBar.current) chartInstanceBar.current.destroy();
@@ -198,6 +200,7 @@
 
             return (
                 <div className="grid md:grid-cols-2 gap-6 mb-8">
+                    {/* Grafik 1: Total */}
                     <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
                         <div className="flex items-center gap-2 mb-4">
                             <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><PieChart size={20}/></div>
@@ -212,6 +215,7 @@
                         </div>
                     </div>
                     
+                    {/* Grafik 2: Per Kelas */}
                     <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
                          <div className="flex items-center gap-2 mb-4">
                             <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BarChart3 size={20}/></div>
@@ -266,7 +270,8 @@
             const lastScanTimeRef = React.useRef(0);
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-            // Logika Pembatasan Sesi: Jika sesi tutup DAN bukan petugas/admin, jangan nyalakan kamera
+            // PERBAIKAN 1: Logika Pembatasan Sesi
+            // Jika sesi tutup DAN bukan petugas/admin, jangan nyalakan kamera sama sekali untuk hemat resource
             React.useEffect(() => {
                 if (!isSessionOpen && !isAdmin && !isScanner) return; // BLOKIR AKSES KAMERA
                 
@@ -384,7 +389,6 @@
 
             const logout = () => { setIsAdmin(false); setIsScanner(false); setView('home'); };
 
-            // FITUR 1: ADMIN GANTI PASSWORD SENDIRI
             const changeAdminPin = async () => {
                 const newPin = prompt("Masukkan PIN Admin Baru (6 Digit Angka):");
                 if (!newPin) return;
@@ -395,7 +399,6 @@
                 } catch (e) { alert("Gagal mengganti PIN: " + e.message); }
             };
 
-            // FITUR 2: RESET PASSWORD ADMIN (LUPA PASSWORD)
             const forgotAdminPin = async () => {
                 const masterKey = prompt("LUPA PIN ADMIN?\nMasukkan KODE MASTER untuk mereset ke Default (1234):");
                 if (masterKey === MASTER_RESET_CODE) {
@@ -500,8 +503,12 @@
             };
 
             const handleCheckIn = React.useCallback(async (regNumInput) => {
-                // LOGIKA SESI DITUTUP: Jika sesi tutup DAN user bukan admin/petugas, tolak akses
-                if (!isSessionOpen && !isAdmin && !isScanner) { setScanStatus('closed'); return; }
+                // PERBAIKAN 1: Logika Pembatasan Sesi (Gatekeeper)
+                // Jika sesi tutup DAN user bukan admin/petugas, tolak akses di fungsi ini
+                if (!isSessionOpen && !isAdmin && !isScanner) { 
+                    setScanStatus('closed'); 
+                    return; 
+                }
                 
                 const cleanInput = regNumInput.trim().toUpperCase();
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
