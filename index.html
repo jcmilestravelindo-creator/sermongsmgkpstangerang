@@ -11,6 +11,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
 
     <script>
@@ -105,8 +106,6 @@
         const COLLECTION_NAME = 'gkps_participants';
         const CONFIG_COLLECTION = 'gkps_config';
         const SCANNERS_COLLECTION = 'gkps_scanners';
-        
-        // --- MASTER KEY UNTUK RESET ADMIN (GANTI INI JIKA PERLU) ---
         const MASTER_RESET_CODE = "GKPS2026"; 
 
         const formatTime = (timestamp) => {
@@ -212,7 +211,7 @@
             const [loginPin, setLoginPin] = React.useState('');
             const [showLoginModal, setShowLoginModal] = React.useState(false);
             const [isSessionOpen, setIsSessionOpen] = React.useState(false);
-            const [adminConfig, setAdminConfig] = React.useState({ pin: '1234' }); // Default PIN Admin
+            const [adminConfig, setAdminConfig] = React.useState({ pin: '1234' });
 
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
@@ -245,7 +244,7 @@
                 });
                 const unsubConfig = onSnapshot(doc(db, CONFIG_COLLECTION, 'admin_settings'), (s) => {
                     if (s.exists()) setAdminConfig(s.data());
-                    else setDoc(doc(db, CONFIG_COLLECTION, 'admin_settings'), { pin: '1234' }); // Init default if empty
+                    else setDoc(doc(db, CONFIG_COLLECTION, 'admin_settings'), { pin: '1234' });
                 });
                 const unsubScanners = onSnapshot(query(collection(db, SCANNERS_COLLECTION)), (s) => setScannersList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
                 return () => { unsubParticipants(); unsubSession(); unsubConfig(); unsubScanners(); };
@@ -253,7 +252,6 @@
 
             const handleSystemLogin = (e) => {
                 e.preventDefault();
-                // Gunakan PIN dari DB atau default
                 if (loginPin === adminConfig.pin) { setIsAdmin(true); setIsScanner(true); setShowLoginModal(false); setView('admin'); setLoginPin(''); return; }
                 const foundScanner = scannersList.find(s => s.pin === loginPin);
                 if (foundScanner) { setIsScanner(true); setIsAdmin(false); setShowLoginModal(false); setView('scanner'); setLoginPin(''); return; }
@@ -262,9 +260,9 @@
 
             const logout = () => { setIsAdmin(false); setIsScanner(false); setView('home'); };
 
-            // FITUR: ADMIN GANTI PASSWORD SENDIRI
+            // FITUR 1: ADMIN GANTI PASSWORD SENDIRI
             const changeAdminPin = async () => {
-                const newPin = prompt("Masukkan PIN Admin Baru (6 Digit):");
+                const newPin = prompt("Masukkan PIN Admin Baru (6 Digit Angka):");
                 if (!newPin) return;
                 if (!/^\d{6}$/.test(newPin)) { alert("Gagal! PIN harus 6 digit angka."); return; }
                 try {
@@ -273,7 +271,7 @@
                 } catch (e) { alert("Gagal mengganti PIN: " + e.message); }
             };
 
-            // FITUR: RESET PASSWORD ADMIN (LUPA PASSWORD)
+            // FITUR 2: RESET PASSWORD ADMIN (LUPA PASSWORD)
             const forgotAdminPin = async () => {
                 const masterKey = prompt("LUPA PIN ADMIN?\nMasukkan KODE MASTER untuk mereset ke Default (1234):");
                 if (masterKey === MASTER_RESET_CODE) {
