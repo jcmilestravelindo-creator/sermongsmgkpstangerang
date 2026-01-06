@@ -11,13 +11,9 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
@@ -93,7 +89,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
-        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp } from 'https://esm.sh/lucide-react@0.292.0';
+        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X } from 'https://esm.sh/lucide-react@0.292.0';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
@@ -128,11 +124,139 @@
             return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         };
 
-        // --- KOMPONEN GRAFIK (UPDATED WITH MONTHLY TREND) ---
+        // --- KOMPONEN BARU: ANALISA DETAIL PESERTA ---
+        const ParticipantAnalysis = ({ participants, onClose }) => {
+            const [filterKelas, setFilterKelas] = React.useState('SEMUA');
+            const [filterStatus, setFilterStatus] = React.useState('SEMUA');
+            const [search, setSearch] = React.useState('');
+
+            // Ambil daftar kelas unik
+            const uniqueClasses = ['SEMUA', ...new Set(participants.map(p => p.kelas || 'Tanpa Kelas'))].sort();
+
+            // Logic Filtering
+            const filteredData = React.useMemo(() => {
+                return participants.filter(p => {
+                    const kelasMatch = filterKelas === 'SEMUA' || (p.kelas || 'Tanpa Kelas') === filterKelas;
+                    const statusMatch = filterStatus === 'SEMUA' || 
+                                      (filterStatus === 'HADIR' && p.checkedIn) || 
+                                      (filterStatus === 'BELUM' && !p.checkedIn);
+                    const searchMatch = p.name.toLowerCase().includes(search.toLowerCase()) || 
+                                      p.regNum.toLowerCase().includes(search.toLowerCase());
+                    return kelasMatch && statusMatch && searchMatch;
+                });
+            }, [participants, filterKelas, filterStatus, search]);
+
+            const stats = {
+                total: filteredData.length,
+                hadir: filteredData.filter(p => p.checkedIn).length,
+                absen: filteredData.filter(p => !p.checkedIn).length
+            };
+            const persentase = stats.total > 0 ? Math.round((stats.hadir / stats.total) * 100) : 0;
+
+            return (
+                <div className="fixed inset-0 z-[100] bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-primary to-secondary p-6 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 className="text-2xl font-black flex items-center gap-2"><LayoutList /> Analisa Detail Peserta</h2>
+                                <p className="text-indigo-100 text-sm opacity-90">Filter dan analisa data absensi secara terperinci.</p>
+                            </div>
+                            <button onClick={onClose} className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition"><X size={24} /></button>
+                        </div>
+
+                        {/* Controls & Summary */}
+                        <div className="p-6 bg-gray-50 border-b border-gray-200 shrink-0">
+                            <div className="flex flex-col md:flex-row gap-4 mb-6">
+                                {/* Filter Controls */}
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Filter size={16} className="text-gray-400"/></div>
+                                        <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none appearance-none bg-white">
+                                            {uniqueClasses.map(c => <option key={c} value={c}>{c === 'SEMUA' ? 'Semua Kelas' : c}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><CheckCircle size={16} className="text-gray-400"/></div>
+                                        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none appearance-none bg-white">
+                                            <option value="SEMUA">Semua Status</option>
+                                            <option value="HADIR">Sudah Hadir</option>
+                                            <option value="BELUM">Belum Hadir</option>
+                                        </select>
+                                    </div>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={16} className="text-gray-400"/></div>
+                                        <input type="text" placeholder="Cari Nama/ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                                    <p className="text-xs text-gray-500 font-bold uppercase">Total Data (Terfilter)</p>
+                                    <p className="text-3xl font-black text-gray-800">{stats.total}</p>
+                                </div>
+                                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 shadow-sm">
+                                    <p className="text-xs text-emerald-600 font-bold uppercase">Hadir</p>
+                                    <p className="text-3xl font-black text-emerald-600">{stats.hadir}</p>
+                                </div>
+                                <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 shadow-sm">
+                                    <p className="text-xs text-rose-600 font-bold uppercase">Belum Hadir</p>
+                                    <p className="text-3xl font-black text-rose-500">{stats.absen}</p>
+                                </div>
+                                <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 shadow-sm">
+                                    <p className="text-xs text-indigo-600 font-bold uppercase">Persentase</p>
+                                    <p className="text-3xl font-black text-indigo-600">{persentase}%</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Table */}
+                        <div className="flex-1 overflow-auto p-6">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-gray-100 sticky top-0 z-10">
+                                    <tr>
+                                        <th className="p-4 rounded-tl-xl text-xs font-bold text-gray-500 uppercase tracking-wider">ID</th>
+                                        <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Nama Peserta</th>
+                                        <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kelas</th>
+                                        <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                                        <th className="p-4 rounded-tr-xl text-xs font-bold text-gray-500 uppercase tracking-wider">Waktu</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredData.length > 0 ? (
+                                        filteredData.map((p) => (
+                                            <tr key={p.id} className="hover:bg-gray-50 transition">
+                                                <td className="p-4 font-mono text-sm text-gray-600">{p.regNum}</td>
+                                                <td className="p-4 font-bold text-gray-800">{p.name}</td>
+                                                <td className="p-4 text-sm text-gray-600"><span className="bg-gray-100 px-2 py-1 rounded-md font-bold text-xs">{p.kelas}</span></td>
+                                                <td className="p-4">
+                                                    {p.checkedIn ? 
+                                                        <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-bold"><CheckCircle size={12}/> Hadir</span> : 
+                                                        <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 px-2 py-1 rounded-full text-xs font-bold"><XCircle size={12}/> Belum</span>
+                                                    }
+                                                </td>
+                                                <td className="p-4 text-sm text-gray-500 font-mono">{formatTime(p.checkInTime)}</td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan="5" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan untuk filter ini.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const StatsChart = ({ participants }) => {
             const pieRef = React.useRef(null);
             const barRef = React.useRef(null);
-            const trendRef = React.useRef(null); // Ref untuk chart baru
+            const trendRef = React.useRef(null); 
             const chartInstancePie = React.useRef(null);
             const chartInstanceBar = React.useRef(null);
             const chartInstanceTrend = React.useRef(null);
@@ -140,18 +264,15 @@
             React.useEffect(() => {
                 if (!participants.length) return;
 
-                // 1. Data Total
                 const total = participants.length;
                 const present = participants.filter(p => p.checkedIn).length;
                 const absent = total - present;
 
-                // 2. Data Per Kelas
                 const rawClasses = participants.map(p => p.kelas || 'Tanpa Kelas');
                 const classes = [...new Set(rawClasses)].sort();
                 const dataPresent = classes.map(cls => participants.filter(p => (p.kelas || 'Tanpa Kelas') === cls && p.checkedIn).length);
                 const dataAbsent = classes.map(cls => participants.filter(p => (p.kelas || 'Tanpa Kelas') === cls && !p.checkedIn).length);
 
-                // 3. Data Trend Bulanan (FITUR BARU)
                 const monthCounts = {};
                 participants.filter(p => p.checkedIn && p.checkInTime).forEach(p => {
                     const date = p.checkInTime.toDate ? p.checkInTime.toDate() : new Date(p.checkInTime);
@@ -159,11 +280,9 @@
                     monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
                 });
                 
-                // Urutkan bulan secara kronologis (sederhana)
                 const monthLabels = Object.keys(monthCounts);
                 const monthData = Object.values(monthCounts);
 
-                // --- CHART 1: PIE ---
                 if (pieRef.current) {
                     if (chartInstancePie.current) chartInstancePie.current.destroy();
                     chartInstancePie.current = new Chart(pieRef.current, {
@@ -180,7 +299,6 @@
                     });
                 }
 
-                // --- CHART 2: STACKED BAR PER KELAS ---
                 if (barRef.current) {
                     if (chartInstanceBar.current) chartInstanceBar.current.destroy();
                     chartInstanceBar.current = new Chart(barRef.current, {
@@ -196,7 +314,6 @@
                     });
                 }
 
-                // --- CHART 3: TREND BULANAN (FITUR BARU) ---
                 if (trendRef.current) {
                     if (chartInstanceTrend.current) chartInstanceTrend.current.destroy();
                     chartInstanceTrend.current = new Chart(trendRef.current, {
@@ -232,7 +349,6 @@
 
             return (
                 <div className="space-y-6 mb-8">
-                    {/* Baris 1: Analisa Trend (Full Width) */}
                     <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
                         <div className="flex items-center gap-2 mb-4">
                             <div className="bg-cyan-100 p-2 rounded-lg text-cyan-600"><TrendingUp size={20}/></div>
@@ -243,7 +359,6 @@
                         </div>
                     </div>
 
-                    {/* Baris 2: Pie & Bar (Grid) */}
                     <div className="grid md:grid-cols-2 gap-6">
                         <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
                             <div className="flex items-center gap-2 mb-4">
@@ -398,6 +513,9 @@
             const [scanStatus, setScanStatus] = React.useState('idle'); 
             const [scannedName, setScannedName] = React.useState('');
             const [showPrintModal, setShowPrintModal] = React.useState(false);
+            
+            // --- STATE BARU UNTUK MODAL ANALISA ---
+            const [showAnalysisModal, setShowAnalysisModal] = React.useState(false);
 
             React.useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
@@ -632,6 +750,9 @@
 
                     <div className="hidden md:block"><NavBar view={view} setView={setView} isAdmin={isAdmin} isScanner={isScanner} /></div>
                     <input type="file" ref={fileInputRef} onChange={handleImportCSV} accept=".csv" className="hidden" />
+                    
+                    {/* Render Modal Analisa jika aktif */}
+                    {showAnalysisModal && <ParticipantAnalysis participants={participants} onClose={() => setShowAnalysisModal(false)} />}
 
                     <main className="container mx-auto px-4 max-w-4xl">
                         {view === 'home' && (
@@ -696,6 +817,17 @@
                                         <button onClick={changeAdminPin} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><KeyRound size={16}/> Ganti PIN Saya</button>
                                         <button onClick={logout} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><LogOut size={16}/> Keluar</button>
                                     </div>
+                                </div>
+
+                                {/* TOMBOL FEATURE BARU: ANALISA DETAIL */}
+                                <div className="mb-8">
+                                    <button onClick={() => setShowAnalysisModal(true)} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-5 rounded-2xl shadow-xl hover:shadow-2xl transition transform hover:-translate-y-1 flex items-center justify-center gap-3">
+                                        <div className="bg-white/20 p-2 rounded-lg"><LayoutList size={24}/></div>
+                                        <div className="text-left">
+                                            <span className="block font-black text-lg">BUKA ANALISA DETAIL PESERTA</span>
+                                            <span className="block text-sm text-blue-100 opacity-90">Filter per kelas, status kehadiran, dan pencarian data spesifik.</span>
+                                        </div>
+                                    </button>
                                 </div>
 
                                 <div className={`p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center border-2 shadow-xl backdrop-blur-md transition-all duration-500 ${isSessionOpen ? 'bg-emerald-500/20 border-emerald-400' : 'bg-rose-500/20 border-rose-400'}`}>
