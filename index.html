@@ -89,7 +89,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
-        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart } from 'https://esm.sh/lucide-react@0.292.0';
+        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart, ChevronDown } from 'https://esm.sh/lucide-react@0.292.0';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
@@ -111,6 +111,16 @@
         const CONFIG_COLLECTION = 'gkps_config';
         const SCANNERS_COLLECTION = 'gkps_scanners';
         const MASTER_RESET_CODE = "GKPS2026"; 
+
+        // DAFTAR KELAS TETAP
+        const CLASS_OPTIONS = [
+            "Daud",
+            "Daniel",
+            "Paulus",
+            "Ester",
+            "Pos PI Abraham",
+            "Pos PI Timotius"
+        ];
 
         const formatTime = (timestamp) => {
             if (!timestamp) return '-';
@@ -175,7 +185,6 @@
 
                 // --- DATA LINE CHART (Matrix Bulanan) ---
                 const monthCounts = {};
-                // Inisialisasi 0 untuk semua bulan agar urut
                 months.forEach(m => monthCounts[m] = 0);
                 
                 filteredData.filter(p => p.checkedIn && p.checkInTime).forEach(p => {
@@ -186,12 +195,10 @@
                 });
                 const lineData = Object.values(monthCounts);
 
-                // --- DESTROY OLD CHARTS ---
                 if (chartInstancePie.current) chartInstancePie.current.destroy();
                 if (chartInstanceBar.current) chartInstanceBar.current.destroy();
                 if (chartInstanceLine.current) chartInstanceLine.current.destroy();
 
-                // --- RENDER PIE CHART ---
                 if (modalPieRef.current) {
                     chartInstancePie.current = new Chart(modalPieRef.current, {
                         type: 'doughnut',
@@ -213,7 +220,6 @@
                     });
                 }
 
-                // --- RENDER BAR CHART ---
                 if (modalBarRef.current) {
                     chartInstanceBar.current = new Chart(modalBarRef.current, {
                         type: 'bar',
@@ -236,7 +242,6 @@
                     });
                 }
 
-                 // --- RENDER LINE CHART (NEW) ---
                  if (modalLineRef.current) {
                     chartInstanceLine.current = new Chart(modalLineRef.current, {
                         type: 'line',
@@ -282,7 +287,6 @@
 
                         {/* Controls Area */}
                         <div className="p-6 bg-gray-50 border-b border-gray-200 shrink-0">
-                            {/* Filter Controls */}
                             <div className="flex flex-col xl:flex-row gap-4 mb-4 justify-between items-end xl:items-center">
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 w-full xl:w-auto">
                                     <div className="relative">
@@ -304,8 +308,6 @@
                                         <input type="text" placeholder="Cari Nama/ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none" />
                                     </div>
                                 </div>
-                                
-                                {/* View Toggle */}
                                 <div className="bg-gray-200 p-1 rounded-xl flex shrink-0">
                                     <button onClick={() => setViewMode('list')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${viewMode === 'list' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                                         <TableProperties size={16}/> List Detail
@@ -351,7 +353,6 @@
                                             <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><BarChart3 size={14}/> Distribusi Kelas</h4>
                                             <div className="flex-1 min-h-[150px] relative"><canvas ref={modalBarRef}></canvas></div>
                                         </div>
-                                        {/* NEW: MONTHLY LINE CHART */}
                                         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                                             <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><TrendingUp size={14}/> Matriks Bulanan</h4>
                                             <div className="flex-1 min-h-[150px] relative"><canvas ref={modalLineRef}></canvas></div>
@@ -619,7 +620,6 @@
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
-                // MODIFIED RULE: Only Admin can bypass closed session. Scanner cannot.
                 if (!isSessionOpen && !isAdmin) return;
                 
                 if (!isSecure) { setCameraError("Wajib HTTPS!"); return; }
@@ -647,7 +647,6 @@
                 return () => { if (scannerRef.current) { scannerRef.current.stop(); scannerRef.current.destroy(); scannerRef.current = null; } };
             }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
 
-            // MODIFIED RULE: Only Admin can see scanner UI when session is closed.
             if (!isSessionOpen && !isAdmin) return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center animate-fade-in">
                     <div className="w-32 h-32 bg-red-500/20 backdrop-blur-md rounded-full flex items-center justify-center mb-6 border-4 border-red-500 shadow-xl shadow-red-900/50">
@@ -790,15 +789,17 @@
             const addParticipant = async (e) => { 
                 e.preventDefault(); 
                 if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; } 
+                
                 await addDoc(collection(db, COLLECTION_NAME), { 
                     name: newName, 
                     regNum: newRegNum, 
-                    category: newCategory || "Manual", // Default if empty
-                    kelas: newClass || "-",            // Default if empty
+                    category: "Manual", // Default kategori
+                    kelas: newClass || "-",            
                     checkedIn: false, 
                     checkInTime: null 
                 }); 
-                setNewName(''); setNewRegNum(''); setNewClass(''); setNewCategory('');
+                
+                setNewName(''); setNewRegNum(''); setNewClass('');
                 alert("Peserta berhasil ditambahkan!"); 
             };
             
@@ -1088,10 +1089,25 @@
                                                 <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Nama Lengkap" value={newName} onChange={e => setNewName(e.target.value)} required/>
                                                 <input className="w-28 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center" placeholder="ID/Reg" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} required/>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Kelas (Contoh: 1 SD)" value={newClass} onChange={e => setNewClass(e.target.value)} />
-                                                <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Kategori (Contoh: GSM)" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
-                                                <button type="submit" className="bg-secondary text-white p-3 rounded-xl hover:bg-violet-700 transition shadow-md w-12 flex items-center justify-center"><Plus size={20}/></button>
+                                            <div className="flex gap-2 relative">
+                                                <div className="relative w-full">
+                                                    <select 
+                                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm appearance-none outline-none focus:ring-2 focus:ring-secondary/50"
+                                                        value={newClass} 
+                                                        onChange={e => setNewClass(e.target.value)}
+                                                        required
+                                                    >
+                                                        <option value="">Pilih Kelas...</option>
+                                                        {CLASS_OPTIONS.map(c => (
+                                                            <option key={c} value={c}>{c}</option>
+                                                        ))}
+                                                    </select>
+                                                    <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400">
+                                                        <ChevronDown size={16} />
+                                                    </div>
+                                                </div>
+                                                
+                                                <button type="submit" className="bg-secondary text-white p-3 rounded-xl hover:bg-violet-700 transition shadow-md w-12 flex items-center justify-center shrink-0"><Plus size={20}/></button>
                                             </div>
                                         </form>
                                         <div className="mb-2 relative"><Search className="absolute left-3 top-3 text-gray-400 w-4 h-4"/><input className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Cari..." value={adminSearch} onChange={e => setAdminSearch(e.target.value)} /></div>
