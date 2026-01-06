@@ -89,7 +89,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
-        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties } from 'https://esm.sh/lucide-react@0.292.0';
+        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart } from 'https://esm.sh/lucide-react@0.292.0';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
@@ -124,7 +124,7 @@
             return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         };
 
-        // --- KOMPONEN: ANALISA DETAIL PESERTA DENGAN MATRIX ---
+        // --- KOMPONEN: ANALISA DETAIL PESERTA DENGAN MATRIX & CHART BULANAN ---
         const ParticipantAnalysis = ({ participants, onClose }) => {
             const [filterKelas, setFilterKelas] = React.useState('SEMUA');
             const [filterStatus, setFilterStatus] = React.useState('SEMUA');
@@ -133,8 +133,11 @@
 
             const modalPieRef = React.useRef(null);
             const modalBarRef = React.useRef(null);
+            const modalLineRef = React.useRef(null); // Ref untuk chart bulanan
+
             const chartInstancePie = React.useRef(null);
             const chartInstanceBar = React.useRef(null);
+            const chartInstanceLine = React.useRef(null); // Instance untuk chart bulanan
 
             const uniqueClasses = ['SEMUA', ...new Set(participants.map(p => p.kelas || 'Tanpa Kelas'))].sort();
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -161,6 +164,7 @@
             React.useEffect(() => {
                 if (viewMode !== 'list') return; 
 
+                // --- DATA BAR CHART (Kelas) ---
                 const classDist = {};
                 filteredData.forEach(p => {
                     const c = p.kelas || 'Tanpa Kelas';
@@ -169,9 +173,25 @@
                 const barLabels = Object.keys(classDist);
                 const barValues = Object.values(classDist);
 
+                // --- DATA LINE CHART (Matrix Bulanan) ---
+                const monthCounts = {};
+                // Inisialisasi 0 untuk semua bulan agar urut
+                months.forEach(m => monthCounts[m] = 0);
+                
+                filteredData.filter(p => p.checkedIn && p.checkInTime).forEach(p => {
+                    const date = p.checkInTime.toDate ? p.checkInTime.toDate() : new Date(p.checkInTime);
+                    const monthIndex = date.getMonth(); // 0-11
+                    const monthName = months[monthIndex];
+                    if(monthName) monthCounts[monthName] += 1;
+                });
+                const lineData = Object.values(monthCounts);
+
+                // --- DESTROY OLD CHARTS ---
                 if (chartInstancePie.current) chartInstancePie.current.destroy();
                 if (chartInstanceBar.current) chartInstanceBar.current.destroy();
+                if (chartInstanceLine.current) chartInstanceLine.current.destroy();
 
+                // --- RENDER PIE CHART ---
                 if (modalPieRef.current) {
                     chartInstancePie.current = new Chart(modalPieRef.current, {
                         type: 'doughnut',
@@ -193,6 +213,7 @@
                     });
                 }
 
+                // --- RENDER BAR CHART ---
                 if (modalBarRef.current) {
                     chartInstanceBar.current = new Chart(modalBarRef.current, {
                         type: 'bar',
@@ -215,9 +236,35 @@
                     });
                 }
 
+                 // --- RENDER LINE CHART (NEW) ---
+                 if (modalLineRef.current) {
+                    chartInstanceLine.current = new Chart(modalLineRef.current, {
+                        type: 'line',
+                        data: {
+                            labels: months,
+                            datasets: [{
+                                label: 'Trend Kehadiran',
+                                data: lineData,
+                                borderColor: '#06b6d4',
+                                backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } },
+                            plugins: { legend: { display: false } }
+                        }
+                    });
+                }
+
                 return () => {
                     if (chartInstancePie.current) chartInstancePie.current.destroy();
                     if (chartInstanceBar.current) chartInstanceBar.current.destroy();
+                    if (chartInstanceLine.current) chartInstanceLine.current.destroy();
                 };
             }, [filteredData, stats, viewMode]);
 
@@ -295,7 +342,7 @@
                             {viewMode === 'list' ? (
                                 <div className="flex-1 overflow-auto p-6">
                                     {/* CHARTS SECTION FOR LIST VIEW */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                                         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                                             <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><PieChart size={14}/> Komposisi Status</h4>
                                             <div className="flex-1 min-h-[150px] relative"><canvas ref={modalPieRef}></canvas></div>
@@ -303,6 +350,11 @@
                                         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
                                             <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><BarChart3 size={14}/> Distribusi Kelas</h4>
                                             <div className="flex-1 min-h-[150px] relative"><canvas ref={modalBarRef}></canvas></div>
+                                        </div>
+                                        {/* NEW: MONTHLY LINE CHART */}
+                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                                            <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><TrendingUp size={14}/> Matriks Bulanan</h4>
+                                            <div className="flex-1 min-h-[150px] relative"><canvas ref={modalLineRef}></canvas></div>
                                         </div>
                                     </div>
 
@@ -312,6 +364,7 @@
                                                 <th className="p-4 rounded-tl-xl text-xs font-bold text-gray-500 uppercase tracking-wider">ID</th>
                                                 <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Nama Peserta</th>
                                                 <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kelas</th>
+                                                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kategori</th>
                                                 <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                                 <th className="p-4 rounded-tr-xl text-xs font-bold text-gray-500 uppercase tracking-wider">Waktu</th>
                                             </tr>
@@ -323,6 +376,7 @@
                                                         <td className="p-4 font-mono text-sm text-gray-600">{p.regNum}</td>
                                                         <td className="p-4 font-bold text-gray-800">{p.name}</td>
                                                         <td className="p-4 text-sm text-gray-600"><span className="bg-gray-100 px-2 py-1 rounded-md font-bold text-xs">{p.kelas}</span></td>
+                                                        <td className="p-4 text-sm text-gray-600">{p.category || '-'}</td>
                                                         <td className="p-4">
                                                             {p.checkedIn ? 
                                                                 <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-bold"><CheckCircle size={12}/> Hadir</span> : 
@@ -333,7 +387,7 @@
                                                     </tr>
                                                 ))
                                             ) : (
-                                                <tr><td colSpan="5" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan.</td></tr>
+                                                <tr><td colSpan="6" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan.</td></tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -565,7 +619,8 @@
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
-                if (!isSessionOpen && !isAdmin && !isScanner) return;
+                // MODIFIED RULE: Only Admin can bypass closed session. Scanner cannot.
+                if (!isSessionOpen && !isAdmin) return;
                 
                 if (!isSecure) { setCameraError("Wajib HTTPS!"); return; }
                 const startScanner = async () => {
@@ -592,7 +647,8 @@
                 return () => { if (scannerRef.current) { scannerRef.current.stop(); scannerRef.current.destroy(); scannerRef.current = null; } };
             }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
 
-            if (!isSessionOpen && !isAdmin && !isScanner) return (
+            // MODIFIED RULE: Only Admin can see scanner UI when session is closed.
+            if (!isSessionOpen && !isAdmin) return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center animate-fade-in">
                     <div className="w-32 h-32 bg-red-500/20 backdrop-blur-md rounded-full flex items-center justify-center mb-6 border-4 border-red-500 shadow-xl shadow-red-900/50">
                         <Lock className="w-16 h-16 text-red-500" />
@@ -638,8 +694,13 @@
             const fileInputRef = React.useRef(null);
             const [importing, setImporting] = React.useState(false);
             const [importProgress, setImportProgress] = React.useState("");
+            
+            // MODIFIED: Added state for class and category
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
+            const [newClass, setNewClass] = React.useState('');
+            const [newCategory, setNewCategory] = React.useState('');
+
             const [newScannerName, setNewScannerName] = React.useState('');
             const [newScannerPin, setNewScannerPin] = React.useState('');
             const [adminSearch, setAdminSearch] = React.useState('');
@@ -651,7 +712,6 @@
             const [scannedName, setScannedName] = React.useState('');
             const [showPrintModal, setShowPrintModal] = React.useState(false);
             
-            // --- STATE BARU UNTUK MODAL ANALISA ---
             const [showAnalysisModal, setShowAnalysisModal] = React.useState(false);
 
             React.useEffect(() => {
@@ -725,7 +785,23 @@
             };
 
             const deleteScannerUser = async (id) => { if(confirm("Hapus petugas ini?")) await deleteDoc(doc(db, SCANNERS_COLLECTION, id)); };
-            const addParticipant = async (e) => { e.preventDefault(); if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; } await addDoc(collection(db, COLLECTION_NAME), { name: newName, regNum: newRegNum, category: "Manual", kelas: "-", checkedIn: false, checkInTime: null }); setNewName(''); setNewRegNum(''); alert("Peserta berhasil ditambahkan!"); };
+            
+            // MODIFIED: Updated addParticipant to include class and category
+            const addParticipant = async (e) => { 
+                e.preventDefault(); 
+                if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; } 
+                await addDoc(collection(db, COLLECTION_NAME), { 
+                    name: newName, 
+                    regNum: newRegNum, 
+                    category: newCategory || "Manual", // Default if empty
+                    kelas: newClass || "-",            // Default if empty
+                    checkedIn: false, 
+                    checkInTime: null 
+                }); 
+                setNewName(''); setNewRegNum(''); setNewClass(''); setNewCategory('');
+                alert("Peserta berhasil ditambahkan!"); 
+            };
+            
             const deleteParticipant = async (id, name) => { if(confirm(`Yakin hapus ${name}?`)) await deleteDoc(doc(db, COLLECTION_NAME, id)); };
             
             const deleteAllData = async () => {
@@ -799,7 +875,8 @@
             };
 
             const handleCheckIn = React.useCallback(async (regNumInput) => {
-                if (!isSessionOpen && !isAdmin && !isScanner) { 
+                // MODIFIED RULE: Only Admin can bypass closed session
+                if (!isSessionOpen && !isAdmin) { 
                     setScanStatus('closed'); 
                     return; 
                 }
@@ -810,7 +887,7 @@
                 await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
                 setScanStatus('success'); setScannedName(participant.name); setScanInput('');
                 setTimeout(() => setScanStatus('idle'), 3000);
-            }, [participants, isSessionOpen, isAdmin, isScanner]);
+            }, [participants, isSessionOpen, isAdmin]);
 
             // --- FITUR EXPORT 1: EXCEL ---
             const handleExportXLS = () => {
@@ -1005,10 +1082,17 @@
 
                                     <div className="glass-panel p-6 rounded-3xl shadow-lg">
                                         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg"><Users className="text-secondary"/> Peserta</h3>
-                                        <form onSubmit={addParticipant} className="flex gap-2 mb-4">
-                                            <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Nama" value={newName} onChange={e => setNewName(e.target.value)} />
-                                            <input className="w-24 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center" placeholder="ID/Reg" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} />
-                                            <button type="submit" className="bg-secondary text-white p-3 rounded-xl hover:bg-violet-700 transition shadow-md"><Plus size={20}/></button>
+                                        {/* MODIFIED: Add manual participant with class and category */}
+                                        <form onSubmit={addParticipant} className="flex flex-col gap-2 mb-4">
+                                            <div className="flex gap-2">
+                                                <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Nama Lengkap" value={newName} onChange={e => setNewName(e.target.value)} required/>
+                                                <input className="w-28 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center" placeholder="ID/Reg" value={newRegNum} onChange={e => setNewRegNum(e.target.value)} required/>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Kelas (Contoh: 1 SD)" value={newClass} onChange={e => setNewClass(e.target.value)} />
+                                                <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Kategori (Contoh: GSM)" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
+                                                <button type="submit" className="bg-secondary text-white p-3 rounded-xl hover:bg-violet-700 transition shadow-md w-12 flex items-center justify-center"><Plus size={20}/></button>
+                                            </div>
                                         </form>
                                         <div className="mb-2 relative"><Search className="absolute left-3 top-3 text-gray-400 w-4 h-4"/><input className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm" placeholder="Cari..." value={adminSearch} onChange={e => setAdminSearch(e.target.value)} /></div>
                                         <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
@@ -1147,4 +1231,3 @@
     </script>
 </body>
 </html>
-
