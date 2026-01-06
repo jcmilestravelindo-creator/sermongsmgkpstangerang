@@ -387,7 +387,12 @@
                                 pointHoverRadius: 8
                             }]
                         },
-                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } }, plugins: { legend: { display: false } } }
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } },
+                            plugins: { legend: { display: false } }
+                        }
                     });
                 }
 
@@ -595,6 +600,22 @@
                     await setDoc(doc(db, CONFIG_COLLECTION, 'admin_settings'), { pin: newPin }, { merge: true });
                     alert("Sukses! PIN Admin telah diganti.");
                 } catch (e) { alert("Gagal mengganti PIN: " + e.message); }
+            };
+
+            // --- FUNGSI BARU: RESET PIN MANAGER ---
+            const changeManagerPin = async () => {
+                const newPin = prompt("Masukkan PIN Manager Baru (6 Digit Angka):");
+                if (!newPin) return;
+                if (!/^\d{6}$/.test(newPin)) {
+                    alert("Gagal! PIN harus 6 digit angka.");
+                    return;
+                }
+                try {
+                    await setDoc(doc(db, CONFIG_COLLECTION, 'admin_settings'), { managerPin: newPin }, { merge: true });
+                    alert("Sukses! PIN Manager telah diganti.");
+                } catch (e) {
+                    alert("Gagal mengganti PIN: " + e.message);
+                }
             };
 
             const forgotAdminPin = async () => {
@@ -874,7 +895,12 @@
                                         {isManager && <p className="text-indigo-200 text-xs font-bold bg-indigo-900/50 px-2 py-1 rounded inline-block w-fit mt-1">Akses Terbatas</p>}
                                     </div>
                                     <div className="flex gap-2">
-                                        {isAdmin && <button onClick={changeAdminPin} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><KeyRound size={16}/> Ganti PIN</button>}
+                                        {isAdmin && (
+                                            <>
+                                                <button onClick={changeAdminPin} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><KeyRound size={16}/> Ganti PIN Admin</button>
+                                                <button onClick={changeManagerPin} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><Briefcase size={16}/> Reset PIN Manager</button>
+                                            </>
+                                        )}
                                         <button onClick={logout} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><LogOut size={16}/> Keluar</button>
                                     </div>
                                 </div>
