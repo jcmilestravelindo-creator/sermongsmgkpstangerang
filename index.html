@@ -89,7 +89,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
         import { getFirestore, collection, addDoc, onSnapshot, query, updateDoc, doc, serverTimestamp, deleteDoc, writeBatch, enableIndexedDbPersistence, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
-        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart, ChevronDown } from 'https://esm.sh/lucide-react@0.292.0';
+        import { QrCode, Users, CheckCircle, Search, Download, Trash2, Plus, Lock, LogOut, Camera, AlertCircle, RefreshCw, FileUp, User, LogIn, UserCog, CameraOff, List, Printer, AlertTriangle, KeyRound, Sparkles, ShieldCheck, PieChart, BarChart3, XCircle, FileSpreadsheet, FileText, TrendingUp, Filter, LayoutList, X, CalendarDays, TableProperties, LineChart, ChevronDown, Briefcase } from 'https://esm.sh/lucide-react@0.292.0';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDrCRqotIf-eqwFmMx9kpDUCOUcTzJ8WGs",
@@ -134,20 +134,20 @@
             return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         };
 
-        // --- KOMPONEN: ANALISA DETAIL PESERTA DENGAN MATRIX & CHART BULANAN ---
+        // --- KOMPONEN: ANALISA DETAIL PESERTA ---
         const ParticipantAnalysis = ({ participants, onClose }) => {
             const [filterKelas, setFilterKelas] = React.useState('SEMUA');
             const [filterStatus, setFilterStatus] = React.useState('SEMUA');
             const [search, setSearch] = React.useState('');
-            const [viewMode, setViewMode] = React.useState('list'); // 'list' or 'matrix'
+            const [viewMode, setViewMode] = React.useState('list'); 
 
             const modalPieRef = React.useRef(null);
             const modalBarRef = React.useRef(null);
-            const modalLineRef = React.useRef(null); // Ref untuk chart bulanan
+            const modalLineRef = React.useRef(null);
 
             const chartInstancePie = React.useRef(null);
             const chartInstanceBar = React.useRef(null);
-            const chartInstanceLine = React.useRef(null); // Instance untuk chart bulanan
+            const chartInstanceLine = React.useRef(null);
 
             const uniqueClasses = ['SEMUA', ...new Set(participants.map(p => p.kelas || 'Tanpa Kelas'))].sort();
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -174,7 +174,6 @@
             React.useEffect(() => {
                 if (viewMode !== 'list') return; 
 
-                // --- DATA BAR CHART (Kelas) ---
                 const classDist = {};
                 filteredData.forEach(p => {
                     const c = p.kelas || 'Tanpa Kelas';
@@ -183,13 +182,12 @@
                 const barLabels = Object.keys(classDist);
                 const barValues = Object.values(classDist);
 
-                // --- DATA LINE CHART (Matrix Bulanan) ---
                 const monthCounts = {};
                 months.forEach(m => monthCounts[m] = 0);
                 
                 filteredData.filter(p => p.checkedIn && p.checkInTime).forEach(p => {
                     const date = p.checkInTime.toDate ? p.checkInTime.toDate() : new Date(p.checkInTime);
-                    const monthIndex = date.getMonth(); // 0-11
+                    const monthIndex = date.getMonth(); 
                     const monthName = months[monthIndex];
                     if(monthName) monthCounts[monthName] += 1;
                 });
@@ -211,12 +209,7 @@
                                 hoverOffset: 4
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            cutout: '70%',
-                            plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } }, title: { display: false } }
-                        }
+                        options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } }, title: { display: false } } }
                     });
                 }
 
@@ -233,12 +226,7 @@
                                 barPercentage: 0.6
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5], display: true } }, x: { grid: { display: false } } },
-                            plugins: { legend: { display: false } }
-                        }
+                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5], display: true } }, x: { grid: { display: false } } }, plugins: { legend: { display: false } } }
                     });
                 }
 
@@ -257,12 +245,7 @@
                                 pointRadius: 4
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } },
-                            plugins: { legend: { display: false } }
-                        }
+                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } }, plugins: { legend: { display: false } } }
                     });
                 }
 
@@ -276,166 +259,47 @@
             return (
                 <div className="fixed inset-0 z-[100] bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-white w-full max-w-6xl h-[95vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-                        {/* Header */}
                         <div className="bg-gradient-to-r from-primary to-secondary p-5 text-white flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-2xl font-black flex items-center gap-2"><LayoutList /> Analisa & Laporan</h2>
-                                <p className="text-indigo-100 text-sm opacity-90">Analisa kehadiran peserta secara detail dan per bulan.</p>
-                            </div>
+                            <div><h2 className="text-2xl font-black flex items-center gap-2"><LayoutList /> Analisa & Laporan</h2><p className="text-indigo-100 text-sm opacity-90">Analisa kehadiran peserta secara detail dan per bulan.</p></div>
                             <button onClick={onClose} className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition"><X size={24} /></button>
                         </div>
-
-                        {/* Controls Area */}
                         <div className="p-6 bg-gray-50 border-b border-gray-200 shrink-0">
                             <div className="flex flex-col xl:flex-row gap-4 mb-4 justify-between items-end xl:items-center">
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 w-full xl:w-auto">
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Filter size={16} className="text-gray-400"/></div>
-                                        <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none appearance-none bg-white">
-                                            {uniqueClasses.map(c => <option key={c} value={c}>{c === 'SEMUA' ? 'Semua Kelas' : c}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><CheckCircle size={16} className="text-gray-400"/></div>
-                                        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none appearance-none bg-white">
-                                            <option value="SEMUA">Semua Status</option>
-                                            <option value="HADIR">Sudah Hadir</option>
-                                            <option value="BELUM">Belum Hadir</option>
-                                        </select>
-                                    </div>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={16} className="text-gray-400"/></div>
-                                        <input type="text" placeholder="Cari Nama/ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none" />
-                                    </div>
+                                    <div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Filter size={16} className="text-gray-400"/></div><select value={filterKelas} onChange={e => setFilterKelas(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none appearance-none bg-white">{uniqueClasses.map(c => <option key={c} value={c}>{c === 'SEMUA' ? 'Semua Kelas' : c}</option>)}</select></div>
+                                    <div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><CheckCircle size={16} className="text-gray-400"/></div><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none appearance-none bg-white"><option value="SEMUA">Semua Status</option><option value="HADIR">Sudah Hadir</option><option value="BELUM">Belum Hadir</option></select></div>
+                                    <div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search size={16} className="text-gray-400"/></div><input type="text" placeholder="Cari Nama/ID..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent outline-none" /></div>
                                 </div>
                                 <div className="bg-gray-200 p-1 rounded-xl flex shrink-0">
-                                    <button onClick={() => setViewMode('list')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${viewMode === 'list' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                                        <TableProperties size={16}/> List Detail
-                                    </button>
-                                    <button onClick={() => setViewMode('matrix')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${viewMode === 'matrix' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                                        <CalendarDays size={16}/> Matriks Bulanan
-                                    </button>
+                                    <button onClick={() => setViewMode('list')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${viewMode === 'list' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><TableProperties size={16}/> List Detail</button>
+                                    <button onClick={() => setViewMode('matrix')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition ${viewMode === 'matrix' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><CalendarDays size={16}/> Matriks Bulanan</button>
                                 </div>
                             </div>
-
-                            {/* Summary Cards */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
-                                    <p className="text-[10px] text-gray-500 font-bold uppercase">Total Filter</p>
-                                    <p className="text-2xl font-black text-gray-800">{stats.total}</p>
-                                </div>
-                                <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100 shadow-sm">
-                                    <p className="text-[10px] text-emerald-600 font-bold uppercase">Hadir</p>
-                                    <p className="text-2xl font-black text-emerald-600">{stats.hadir}</p>
-                                </div>
-                                <div className="bg-rose-50 p-3 rounded-2xl border border-rose-100 shadow-sm">
-                                    <p className="text-[10px] text-rose-600 font-bold uppercase">Belum</p>
-                                    <p className="text-2xl font-black text-rose-500">{stats.absen}</p>
-                                </div>
-                                <div className="bg-indigo-50 p-3 rounded-2xl border border-indigo-100 shadow-sm">
-                                    <p className="text-[10px] text-indigo-600 font-bold uppercase">Persentase</p>
-                                    <p className="text-2xl font-black text-indigo-600">{persentase}%</p>
-                                </div>
+                                <div className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm"><p className="text-[10px] text-gray-500 font-bold uppercase">Total Filter</p><p className="text-2xl font-black text-gray-800">{stats.total}</p></div>
+                                <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100 shadow-sm"><p className="text-[10px] text-emerald-600 font-bold uppercase">Hadir</p><p className="text-2xl font-black text-emerald-600">{stats.hadir}</p></div>
+                                <div className="bg-rose-50 p-3 rounded-2xl border border-rose-100 shadow-sm"><p className="text-[10px] text-rose-600 font-bold uppercase">Belum</p><p className="text-2xl font-black text-rose-500">{stats.absen}</p></div>
+                                <div className="bg-indigo-50 p-3 rounded-2xl border border-indigo-100 shadow-sm"><p className="text-[10px] text-indigo-600 font-bold uppercase">Persentase</p><p className="text-2xl font-black text-indigo-600">{persentase}%</p></div>
                             </div>
                         </div>
-
-                        {/* Content Area */}
                         <div className="flex-1 overflow-hidden bg-white flex flex-col">
                             {viewMode === 'list' ? (
                                 <div className="flex-1 overflow-auto p-6">
-                                    {/* CHARTS SECTION FOR LIST VIEW */}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
-                                            <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><PieChart size={14}/> Komposisi Status</h4>
-                                            <div className="flex-1 min-h-[150px] relative"><canvas ref={modalPieRef}></canvas></div>
-                                        </div>
-                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
-                                            <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><BarChart3 size={14}/> Distribusi Kelas</h4>
-                                            <div className="flex-1 min-h-[150px] relative"><canvas ref={modalBarRef}></canvas></div>
-                                        </div>
-                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
-                                            <h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><TrendingUp size={14}/> Matriks Bulanan</h4>
-                                            <div className="flex-1 min-h-[150px] relative"><canvas ref={modalLineRef}></canvas></div>
-                                        </div>
+                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col"><h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><PieChart size={14}/> Komposisi Status</h4><div className="flex-1 min-h-[150px] relative"><canvas ref={modalPieRef}></canvas></div></div>
+                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col"><h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><BarChart3 size={14}/> Distribusi Kelas</h4><div className="flex-1 min-h-[150px] relative"><canvas ref={modalBarRef}></canvas></div></div>
+                                        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col"><h4 className="font-bold text-gray-600 mb-2 text-xs uppercase flex items-center gap-2"><TrendingUp size={14}/> Matriks Bulanan</h4><div className="flex-1 min-h-[150px] relative"><canvas ref={modalLineRef}></canvas></div></div>
                                     </div>
-
                                     <table className="w-full text-left border-collapse">
-                                        <thead className="bg-gray-100 sticky top-0 z-10">
-                                            <tr>
-                                                <th className="p-4 rounded-tl-xl text-xs font-bold text-gray-500 uppercase tracking-wider">ID</th>
-                                                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Nama Peserta</th>
-                                                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kelas</th>
-                                                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kategori</th>
-                                                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                                                <th className="p-4 rounded-tr-xl text-xs font-bold text-gray-500 uppercase tracking-wider">Waktu</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredData.length > 0 ? (
-                                                filteredData.map((p) => (
-                                                    <tr key={p.id} className="hover:bg-gray-50 transition">
-                                                        <td className="p-4 font-mono text-sm text-gray-600">{p.regNum}</td>
-                                                        <td className="p-4 font-bold text-gray-800">{p.name}</td>
-                                                        <td className="p-4 text-sm text-gray-600"><span className="bg-gray-100 px-2 py-1 rounded-md font-bold text-xs">{p.kelas}</span></td>
-                                                        <td className="p-4 text-sm text-gray-600">{p.category || '-'}</td>
-                                                        <td className="p-4">
-                                                            {p.checkedIn ? 
-                                                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-bold"><CheckCircle size={12}/> Hadir</span> : 
-                                                                <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 px-2 py-1 rounded-full text-xs font-bold"><XCircle size={12}/> Belum</span>
-                                                            }
-                                                        </td>
-                                                        <td className="p-4 text-sm text-gray-500 font-mono">{formatTime(p.checkInTime)}</td>
-                                                    </tr>
-                                                ))
-                                            ) : (
-                                                <tr><td colSpan="6" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan.</td></tr>
-                                            )}
-                                        </tbody>
+                                        <thead className="bg-gray-100 sticky top-0 z-10"><tr><th className="p-4 rounded-tl-xl text-xs font-bold text-gray-500 uppercase tracking-wider">ID</th><th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Nama Peserta</th><th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kelas</th><th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kategori</th><th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th><th className="p-4 rounded-tr-xl text-xs font-bold text-gray-500 uppercase tracking-wider">Waktu</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-100">{filteredData.length > 0 ? (filteredData.map((p) => (<tr key={p.id} className="hover:bg-gray-50 transition"><td className="p-4 font-mono text-sm text-gray-600">{p.regNum}</td><td className="p-4 font-bold text-gray-800">{p.name}</td><td className="p-4 text-sm text-gray-600"><span className="bg-gray-100 px-2 py-1 rounded-md font-bold text-xs">{p.kelas}</span></td><td className="p-4 text-sm text-gray-600">{p.category || '-'}</td><td className="p-4">{p.checkedIn ? <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-bold"><CheckCircle size={12}/> Hadir</span> : <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 px-2 py-1 rounded-full text-xs font-bold"><XCircle size={12}/> Belum</span>}</td><td className="p-4 text-sm text-gray-500 font-mono">{formatTime(p.checkInTime)}</td></tr>))) : (<tr><td colSpan="6" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan.</td></tr>)}</tbody>
                                     </table>
                                 </div>
                             ) : (
                                 <div className="flex-1 overflow-auto">
                                     <table className="w-full text-left border-collapse">
-                                        <thead className="bg-gray-100 sticky top-0 z-20 shadow-sm">
-                                            <tr>
-                                                <th className="p-3 bg-gray-100 sticky left-0 z-30 border-r border-gray-200 min-w-[200px] text-xs font-bold text-gray-600 uppercase">Nama Peserta</th>
-                                                {months.map(m => (
-                                                    <th key={m} className="p-3 text-center min-w-[60px] text-xs font-bold text-gray-500 uppercase border-r border-gray-200 last:border-r-0">{m}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredData.length > 0 ? (
-                                                filteredData.map((p) => {
-                                                    const dateObj = p.checkInTime ? (p.checkInTime.toDate ? p.checkInTime.toDate() : new Date(p.checkInTime)) : null;
-                                                    const monthIndex = dateObj && p.checkedIn ? dateObj.getMonth() : -1;
-                                                    const dayDate = dateObj ? dateObj.getDate() : '';
-                                                    
-                                                    return (
-                                                        <tr key={p.id} className="hover:bg-indigo-50/30 transition">
-                                                            <td className="p-3 bg-white sticky left-0 z-10 border-r border-gray-200 group-hover:bg-indigo-50/30">
-                                                                <div className="font-bold text-gray-800 text-sm">{p.name}</div>
-                                                                <div className="text-[10px] text-gray-400 font-mono">{p.regNum} • {p.kelas}</div>
-                                                            </td>
-                                                            {months.map((m, i) => (
-                                                                <td key={i} className="p-2 text-center border-r border-gray-100 last:border-r-0">
-                                                                    {i === monthIndex ? (
-                                                                        <div className="flex flex-col items-center justify-center animate-fade-in">
-                                                                            <div className="bg-emerald-100 text-emerald-600 p-1.5 rounded-full mb-1"><CheckCircle size={16} strokeWidth={3}/></div>
-                                                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 rounded">Tgl {dayDate}</span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-gray-200 text-xl font-light">·</span>
-                                                                    )}
-                                                                </td>
-                                                            ))}
-                                                        </tr>
-                                                    );
-                                                })
-                                            ) : (
-                                                <tr><td colSpan="13" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan untuk filter ini.</td></tr>
-                                            )}
-                                        </tbody>
+                                        <thead className="bg-gray-100 sticky top-0 z-20 shadow-sm"><tr><th className="p-3 bg-gray-100 sticky left-0 z-30 border-r border-gray-200 min-w-[200px] text-xs font-bold text-gray-600 uppercase">Nama Peserta</th>{months.map(m => (<th key={m} className="p-3 text-center min-w-[60px] text-xs font-bold text-gray-500 uppercase border-r border-gray-200 last:border-r-0">{m}</th>))}</tr></thead>
+                                        <tbody className="divide-y divide-gray-100">{filteredData.length > 0 ? (filteredData.map((p) => {const dateObj = p.checkInTime ? (p.checkInTime.toDate ? p.checkInTime.toDate() : new Date(p.checkInTime)) : null; const monthIndex = dateObj && p.checkedIn ? dateObj.getMonth() : -1; const dayDate = dateObj ? dateObj.getDate() : ''; return (<tr key={p.id} className="hover:bg-indigo-50/30 transition"><td className="p-3 bg-white sticky left-0 z-10 border-r border-gray-200 group-hover:bg-indigo-50/30"><div className="font-bold text-gray-800 text-sm">{p.name}</div><div className="text-[10px] text-gray-400 font-mono">{p.regNum} • {p.kelas}</div></td>{months.map((m, i) => (<td key={i} className="p-2 text-center border-r border-gray-100 last:border-r-0">{i === monthIndex ? (<div className="flex flex-col items-center justify-center animate-fade-in"><div className="bg-emerald-100 text-emerald-600 p-1.5 rounded-full mb-1"><CheckCircle size={16} strokeWidth={3}/></div><span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 rounded">Tgl {dayDate}</span></div>) : (<span className="text-gray-200 text-xl font-light">·</span>)}</td>))}</tr>);})) : (<tr><td colSpan="13" className="p-12 text-center text-gray-400 font-medium italic">Data tidak ditemukan untuk filter ini.</td></tr>)}</tbody>
                                     </table>
                                 </div>
                             )}
@@ -523,12 +387,7 @@
                                 pointHoverRadius: 8
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } },
-                            plugins: { legend: { display: false } }
-                        }
+                        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { borderDash: [5, 5] } }, x: { grid: { display: false } } }, plugins: { legend: { display: false } } }
                     });
                 }
 
@@ -541,78 +400,43 @@
 
             return (
                 <div className="space-y-6 mb-8">
-                    <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
-                        <div className="flex items-center gap-2 mb-4">
-                            <div className="bg-cyan-100 p-2 rounded-lg text-cyan-600"><TrendingUp size={20}/></div>
-                            <h3 className="font-bold text-gray-700">Analisa Trend Kehadiran (Per Bulan)</h3>
-                        </div>
-                        <div className="h-64 w-full">
-                            <canvas ref={trendRef}></canvas>
-                        </div>
-                    </div>
-
+                    <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40"><div className="flex items-center gap-2 mb-4"><div className="bg-cyan-100 p-2 rounded-lg text-cyan-600"><TrendingUp size={20}/></div><h3 className="font-bold text-gray-700">Analisa Trend Kehadiran (Per Bulan)</h3></div><div className="h-64 w-full"><canvas ref={trendRef}></canvas></div></div>
                     <div className="grid md:grid-cols-2 gap-6">
-                        <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
-                            <div className="flex items-center gap-2 mb-4">
-                                <div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><PieChart size={20}/></div>
-                                <h3 className="font-bold text-gray-700">Persentase Saat Ini</h3>
-                            </div>
-                            <div className="h-56 relative">
-                                <canvas ref={pieRef}></canvas>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                    <span className="text-3xl font-black text-gray-800">{participants.length > 0 ? Math.round((participants.filter(p=>p.checkedIn).length / participants.length) * 100) : 0}%</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40">
-                             <div className="flex items-center gap-2 mb-4">
-                                <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BarChart3 size={20}/></div>
-                                <h3 className="font-bold text-gray-700">Analisa Per Kelas</h3>
-                            </div>
-                            <div className="h-56">
-                                <canvas ref={barRef}></canvas>
-                            </div>
-                        </div>
+                        <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40"><div className="flex items-center gap-2 mb-4"><div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><PieChart size={20}/></div><h3 className="font-bold text-gray-700">Persentase Saat Ini</h3></div><div className="h-56 relative"><canvas ref={pieRef}></canvas><div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-3xl font-black text-gray-800">{participants.length > 0 ? Math.round((participants.filter(p=>p.checkedIn).length / participants.length) * 100) : 0}%</span></div></div></div>
+                        <div className="glass-panel p-6 rounded-3xl shadow-lg border border-white/40"><div className="flex items-center gap-2 mb-4"><div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><BarChart3 size={20}/></div><h3 className="font-bold text-gray-700">Analisa Per Kelas</h3></div><div className="h-56"><canvas ref={barRef}></canvas></div></div>
                     </div>
                 </div>
             );
         };
 
-        const NavBar = ({ view, setView, isAdmin, isScanner }) => (
+        const NavBar = ({ view, setView, isAdmin, isManager, isScanner }) => (
             <nav className="fixed bottom-0 left-0 w-full glass-nav shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-50 md:top-0 md:bottom-auto md:border-b md:border-t-0 no-print">
                 <div className="flex justify-around items-center h-20 max-w-4xl mx-auto px-4">
                     <button onClick={() => setView('home')} className={`flex flex-col items-center transition-all duration-300 ${view === 'home' ? 'text-primary scale-110' : 'text-gray-400 hover:text-gray-600'}`}>
-                        <div className={`p-2 rounded-xl ${view === 'home' ? 'bg-indigo-50' : ''}`}><Users size={24} strokeWidth={view === 'home' ? 2.5 : 2} /></div>
-                        <span className="text-[10px] font-medium mt-1">Beranda</span>
+                        <div className={`p-2 rounded-xl ${view === 'home' ? 'bg-indigo-50' : ''}`}><Users size={24} strokeWidth={view === 'home' ? 2.5 : 2} /></div><span className="text-[10px] font-medium mt-1">Beranda</span>
                     </button>
                     <button onClick={() => setView('my-qr')} className={`flex flex-col items-center transition-all duration-300 ${view === 'my-qr' ? 'text-primary scale-110' : 'text-gray-400 hover:text-gray-600'}`}>
-                        <div className={`p-2 rounded-xl ${view === 'my-qr' ? 'bg-indigo-50' : ''}`}><QrCode size={24} strokeWidth={view === 'my-qr' ? 2.5 : 2} /></div>
-                        <span className="text-[10px] font-medium mt-1">QR Saya</span>
+                        <div className={`p-2 rounded-xl ${view === 'my-qr' ? 'bg-indigo-50' : ''}`}><QrCode size={24} strokeWidth={view === 'my-qr' ? 2.5 : 2} /></div><span className="text-[10px] font-medium mt-1">QR Saya</span>
                     </button>
-                    {(isAdmin || isScanner) && (
+                    {(isAdmin || isScanner || isManager) && (
                         <button onClick={() => setView('scanner')} className="group relative -top-6">
-                            <div className="bg-gradient-to-tr from-primary to-secondary rounded-full p-4 shadow-lg shadow-indigo-500/40 border-4 border-white transform transition-transform group-hover:scale-105 group-active:scale-95">
-                                <Camera size={28} className="text-white" />
-                            </div>
+                            <div className="bg-gradient-to-tr from-primary to-secondary rounded-full p-4 shadow-lg shadow-indigo-500/40 border-4 border-white transform transition-transform group-hover:scale-105 group-active:scale-95"><Camera size={28} className="text-white" /></div>
                             <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-gray-500">Scan</span>
                         </button>
                     )}
                     <button onClick={() => setView('live')} className={`flex flex-col items-center transition-all duration-300 ${view === 'live' ? 'text-primary scale-110' : 'text-gray-400 hover:text-gray-600'}`}>
-                        <div className={`p-2 rounded-xl ${view === 'live' ? 'bg-indigo-50' : ''}`}><CheckCircle size={24} strokeWidth={view === 'live' ? 2.5 : 2} /></div>
-                        <span className="text-[10px] font-medium mt-1">Live</span>
+                        <div className={`p-2 rounded-xl ${view === 'live' ? 'bg-indigo-50' : ''}`}><CheckCircle size={24} strokeWidth={view === 'live' ? 2.5 : 2} /></div><span className="text-[10px] font-medium mt-1">Live</span>
                     </button>
-                    {isAdmin && (
+                    {(isAdmin || isManager) && (
                         <button onClick={() => setView('admin')} className={`flex flex-col items-center transition-all duration-300 ${view === 'admin' ? 'text-primary scale-110' : 'text-gray-400 hover:text-gray-600'}`}>
-                            <div className={`p-2 rounded-xl ${view === 'admin' ? 'bg-indigo-50' : ''}`}><Lock size={24} strokeWidth={view === 'admin' ? 2.5 : 2} /></div>
-                            <span className="text-[10px] font-medium mt-1">Admin</span>
+                            <div className={`p-2 rounded-xl ${view === 'admin' ? 'bg-indigo-50' : ''}`}><Lock size={24} strokeWidth={view === 'admin' ? 2.5 : 2} /></div><span className="text-[10px] font-medium mt-1">{isAdmin ? 'Admin' : 'Manager'}</span>
                         </button>
                     )}
                 </div>
             </nav>
         );
 
-        const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isScanner }) => {
+        const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isManager, isScanner }) => {
             const videoRef = React.useRef(null);
             const scannerRef = React.useRef(null);
             const [cameraError, setCameraError] = React.useState(null);
@@ -620,7 +444,7 @@
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
             React.useEffect(() => {
-                if (!isSessionOpen && !isAdmin) return;
+                if (!isSessionOpen && !isAdmin && !isManager) return;
                 
                 if (!isSecure) { setCameraError("Wajib HTTPS!"); return; }
                 const startScanner = async () => {
@@ -645,13 +469,11 @@
                 };
                 setTimeout(startScanner, 100);
                 return () => { if (scannerRef.current) { scannerRef.current.stop(); scannerRef.current.destroy(); scannerRef.current = null; } };
-            }, [isSessionOpen, isAdmin, isScanner, handleCheckIn]);
+            }, [isSessionOpen, isAdmin, isManager, isScanner, handleCheckIn]);
 
-            if (!isSessionOpen && !isAdmin) return (
+            if (!isSessionOpen && !isAdmin && !isManager) return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center animate-fade-in">
-                    <div className="w-32 h-32 bg-red-500/20 backdrop-blur-md rounded-full flex items-center justify-center mb-6 border-4 border-red-500 shadow-xl shadow-red-900/50">
-                        <Lock className="w-16 h-16 text-red-500" />
-                    </div>
+                    <div className="w-32 h-32 bg-red-500/20 backdrop-blur-md rounded-full flex items-center justify-center mb-6 border-4 border-red-500 shadow-xl shadow-red-900/50"><Lock className="w-16 h-16 text-red-500" /></div>
                     <h2 className="text-3xl font-black text-white mb-2 drop-shadow-md">SESI DITUTUP</h2>
                     <p className="text-indigo-200 text-lg max-w-xs mx-auto">Sesi check-in saat ini sedang dinonaktifkan oleh panitia.</p>
                 </div>
@@ -681,12 +503,18 @@
             const [scannersList, setScannersList] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
             const [view, setView] = React.useState('home');
+            
+            // STATES FOR ROLES
             const [isAdmin, setIsAdmin] = React.useState(false);
+            const [isManager, setIsManager] = React.useState(false);
             const [isScanner, setIsScanner] = React.useState(false);
+            
             const [loginPin, setLoginPin] = React.useState('');
             const [showLoginModal, setShowLoginModal] = React.useState(false);
             const [isSessionOpen, setIsSessionOpen] = React.useState(false);
-            const [adminConfig, setAdminConfig] = React.useState({ pin: '1234' });
+            
+            // CONFIG (Added managerPin)
+            const [adminConfig, setAdminConfig] = React.useState({ pin: '1234', managerPin: '5678' });
             
             const [liveTab, setLiveTab] = React.useState('present');
 
@@ -694,7 +522,6 @@
             const [importing, setImporting] = React.useState(false);
             const [importProgress, setImportProgress] = React.useState("");
             
-            // MODIFIED: Added state for class and category
             const [newName, setNewName] = React.useState('');
             const [newRegNum, setNewRegNum] = React.useState('');
             const [newClass, setNewClass] = React.useState('');
@@ -728,7 +555,7 @@
                 });
                 const unsubConfig = onSnapshot(doc(db, CONFIG_COLLECTION, 'admin_settings'), (s) => {
                     if (s.exists()) setAdminConfig(s.data());
-                    else setDoc(doc(db, CONFIG_COLLECTION, 'admin_settings'), { pin: '1234' });
+                    else setDoc(doc(db, CONFIG_COLLECTION, 'admin_settings'), { pin: '1234', managerPin: '5678' });
                 });
                 const unsubScanners = onSnapshot(query(collection(db, SCANNERS_COLLECTION)), (s) => setScannersList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
                 return () => { unsubParticipants(); unsubSession(); unsubConfig(); unsubScanners(); };
@@ -736,13 +563,29 @@
 
             const handleSystemLogin = (e) => {
                 e.preventDefault();
-                if (loginPin === adminConfig.pin) { setIsAdmin(true); setIsScanner(true); setShowLoginModal(false); setView('admin'); setLoginPin(''); return; }
+                // ADMIN LOGIN
+                if (loginPin === adminConfig.pin) { 
+                    setIsAdmin(true); setIsManager(true); setIsScanner(true); 
+                    setShowLoginModal(false); setView('admin'); setLoginPin(''); 
+                    return; 
+                }
+                // MANAGER LOGIN
+                if (loginPin === (adminConfig.managerPin || '5678')) {
+                    setIsAdmin(false); setIsManager(true); setIsScanner(true);
+                    setShowLoginModal(false); setView('admin'); setLoginPin('');
+                    return;
+                }
+                // SCANNER LOGIN
                 const foundScanner = scannersList.find(s => s.pin === loginPin);
-                if (foundScanner) { setIsScanner(true); setIsAdmin(false); setShowLoginModal(false); setView('scanner'); setLoginPin(''); return; }
+                if (foundScanner) { 
+                    setIsScanner(true); setIsAdmin(false); setIsManager(false);
+                    setShowLoginModal(false); setView('scanner'); setLoginPin(''); 
+                    return; 
+                }
                 alert('PIN Salah!');
             };
 
-            const logout = () => { setIsAdmin(false); setIsScanner(false); setView('home'); };
+            const logout = () => { setIsAdmin(false); setIsManager(false); setIsScanner(false); setView('home'); };
 
             const changeAdminPin = async () => {
                 const newPin = prompt("Masukkan PIN Admin Baru (6 Digit Angka):");
@@ -785,7 +628,6 @@
 
             const deleteScannerUser = async (id) => { if(confirm("Hapus petugas ini?")) await deleteDoc(doc(db, SCANNERS_COLLECTION, id)); };
             
-            // MODIFIED: Updated addParticipant to include class and category
             const addParticipant = async (e) => { 
                 e.preventDefault(); 
                 if (participants.some(p => p.regNum === newRegNum)) { alert('No. Reg sudah ada!'); return; } 
@@ -793,7 +635,7 @@
                 await addDoc(collection(db, COLLECTION_NAME), { 
                     name: newName, 
                     regNum: newRegNum, 
-                    category: "Manual", // Default kategori
+                    category: "Manual", 
                     kelas: newClass || "-",            
                     checkedIn: false, 
                     checkInTime: null 
@@ -876,8 +718,8 @@
             };
 
             const handleCheckIn = React.useCallback(async (regNumInput) => {
-                // MODIFIED RULE: Only Admin can bypass closed session
-                if (!isSessionOpen && !isAdmin) { 
+                // MODIFIED RULE: Admin and Manager can scan even if closed
+                if (!isSessionOpen && !isAdmin && !isManager) { 
                     setScanStatus('closed'); 
                     return; 
                 }
@@ -888,7 +730,7 @@
                 await updateDoc(doc(db, COLLECTION_NAME, participant.id), { checkedIn: true, checkInTime: serverTimestamp() });
                 setScanStatus('success'); setScannedName(participant.name); setScanInput('');
                 setTimeout(() => setScanStatus('idle'), 3000);
-            }, [participants, isSessionOpen, isAdmin]);
+            }, [participants, isSessionOpen, isAdmin, isManager]);
 
             // --- FITUR EXPORT 1: EXCEL ---
             const handleExportXLS = () => {
@@ -963,7 +805,7 @@
                         <div className="absolute -bottom-32 left-1/2 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl opacity-50 animate-blob animation-delay-4000 mix-blend-multiply"></div>
                     </div>
 
-                    <div className="hidden md:block"><NavBar view={view} setView={setView} isAdmin={isAdmin} isScanner={isScanner} /></div>
+                    <div className="hidden md:block"><NavBar view={view} setView={setView} isAdmin={isAdmin} isManager={isManager} isScanner={isScanner} /></div>
                     <input type="file" ref={fileInputRef} onChange={handleImportCSV} accept=".csv" className="hidden" />
                     
                     {/* Render Modal Analisa jika aktif */}
@@ -972,12 +814,12 @@
                     <main className="container mx-auto px-4 max-w-4xl">
                         {view === 'home' && (
                             <div className="flex flex-col items-center justify-center min-h-[70vh] text-center animate-fade-in relative">
-                                {!isAdmin && !isScanner && (
+                                {!isAdmin && !isScanner && !isManager && (
                                     <button onClick={() => setShowLoginModal(true)} className="absolute top-6 right-6 text-white/80 hover:text-white flex items-center gap-2 bg-white/10 backdrop-blur px-4 py-2 rounded-full transition hover:bg-white/20">
                                         <LogIn size={16} /> <span className="text-sm font-semibold">Login Petugas</span>
                                     </button>
                                 )}
-                                {(isAdmin || isScanner) && (
+                                {(isAdmin || isScanner || isManager) && (
                                     <button onClick={logout} className="absolute top-6 right-6 text-red-100 hover:text-white flex items-center gap-2 bg-red-500/20 backdrop-blur px-4 py-2 rounded-full transition hover:bg-red-500/40 border border-red-500/30">
                                         <LogOut size={16} /> <span className="text-sm font-bold">Logout</span>
                                     </button>
@@ -1024,12 +866,15 @@
                             </div>
                         )}
 
-                        {view === 'admin' && isAdmin && (
+                        {view === 'admin' && (isAdmin || isManager) && (
                             <div className="animate-slide-up pb-24">
                                 <div className="flex justify-between items-center mb-8">
-                                    <h1 className="text-3xl font-black text-white drop-shadow-md">Dashboard Admin</h1>
+                                    <div className="flex flex-col">
+                                        <h1 className="text-3xl font-black text-white drop-shadow-md">Dashboard {isAdmin ? 'Admin' : 'Manager'}</h1>
+                                        {isManager && <p className="text-indigo-200 text-xs font-bold bg-indigo-900/50 px-2 py-1 rounded inline-block w-fit mt-1">Akses Terbatas</p>}
+                                    </div>
                                     <div className="flex gap-2">
-                                        <button onClick={changeAdminPin} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><KeyRound size={16}/> Ganti PIN Saya</button>
+                                        {isAdmin && <button onClick={changeAdminPin} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><KeyRound size={16}/> Ganti PIN</button>}
                                         <button onClick={logout} className="bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur hover:bg-white/20 transition flex items-center gap-2"><LogOut size={16}/> Keluar</button>
                                     </div>
                                 </div>
@@ -1045,44 +890,48 @@
                                     </button>
                                 </div>
 
-                                <div className={`p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center border-2 shadow-xl backdrop-blur-md transition-all duration-500 ${isSessionOpen ? 'bg-emerald-500/20 border-emerald-400' : 'bg-rose-500/20 border-rose-400'}`}>
-                                    <div className="mb-4 md:mb-0">
-                                        <h3 className="font-bold text-white text-xl flex items-center gap-2">
-                                            {isSessionOpen ? <ShieldCheck className="text-emerald-300"/> : <Lock className="text-rose-300"/>}
-                                            Status Sesi Absensi
-                                        </h3>
-                                        <p className={`text-sm font-medium mt-1 ${isSessionOpen ? 'text-emerald-200' : 'text-rose-200'}`}>
-                                            {isSessionOpen ? '✅ SESI TERBUKA: Peserta bisa melakukan scan.' : '⛔ SESI DITUTUP: Akses check-in dikunci.'}
-                                        </p>
+                                {isAdmin && (
+                                    <div className={`p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center border-2 shadow-xl backdrop-blur-md transition-all duration-500 ${isSessionOpen ? 'bg-emerald-500/20 border-emerald-400' : 'bg-rose-500/20 border-rose-400'}`}>
+                                        <div className="mb-4 md:mb-0">
+                                            <h3 className="font-bold text-white text-xl flex items-center gap-2">
+                                                {isSessionOpen ? <ShieldCheck className="text-emerald-300"/> : <Lock className="text-rose-300"/>}
+                                                Status Sesi Absensi
+                                            </h3>
+                                            <p className={`text-sm font-medium mt-1 ${isSessionOpen ? 'text-emerald-200' : 'text-rose-200'}`}>
+                                                {isSessionOpen ? '✅ SESI TERBUKA: Peserta bisa melakukan scan.' : '⛔ SESI DITUTUP: Akses check-in dikunci.'}
+                                            </p>
+                                        </div>
+                                        <button onClick={async () => { await setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: !isSessionOpen }, { merge: true }); }} 
+                                            className={`px-8 py-3 rounded-xl text-white font-bold shadow-lg transition transform hover:scale-105 active:scale-95 flex items-center gap-2 ${isSessionOpen ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+                                            {isSessionOpen ? <><Lock size={18}/> TUTUP SESI SEKARANG</> : <><ShieldCheck size={18}/> BUKA SESI SEKARANG</>}
+                                        </button>
                                     </div>
-                                    <button onClick={async () => { await setDoc(doc(db, CONFIG_COLLECTION, 'session_status'), { open: !isSessionOpen }, { merge: true }); }} 
-                                        className={`px-8 py-3 rounded-xl text-white font-bold shadow-lg transition transform hover:scale-105 active:scale-95 flex items-center gap-2 ${isSessionOpen ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
-                                        {isSessionOpen ? <><Lock size={18}/> TUTUP SESI SEKARANG</> : <><ShieldCheck size={18}/> BUKA SESI SEKARANG</>}
-                                    </button>
-                                </div>
+                                )}
 
                                 <StatsChart participants={participants} />
 
                                 <div className="grid md:grid-cols-2 gap-6">
-                                    <div className="glass-panel p-6 rounded-3xl shadow-lg">
-                                        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg"><UserCog className="text-primary"/> Petugas Scan</h3>
-                                        <form onSubmit={addScannerUser} className="flex gap-2 mb-4">
-                                            <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none" placeholder="Nama" value={newScannerName} onChange={e => setNewScannerName(e.target.value)} required />
-                                            <input className="w-28 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center font-mono outline-none" placeholder="PIN 6 Digit" value={newScannerPin} onChange={e => setNewScannerPin(e.target.value)} maxLength="6" required />
-                                            <button type="submit" className="bg-primary text-white p-3 rounded-xl hover:bg-indigo-700 transition shadow-md"><Plus size={20}/></button>
-                                        </form>
-                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                            {scannersList.map(s => (
-                                                <div key={s.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-                                                    <div><p className="font-bold text-gray-800 text-sm">{s.name}</p><p className="text-xs text-gray-400 font-mono">PIN: {s.pin}</p></div>
-                                                    <div className="flex gap-1"><button onClick={() => resetScannerPin(s.id, s.name)} className="bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100" title="Reset PIN"><KeyRound size={14}/></button><button onClick={() => deleteScannerUser(s.id)} className="bg-red-50 text-red-500 p-2 rounded-lg hover:bg-red-100" title="Hapus"><Trash2 size={14}/></button></div>
-                                                </div>
-                                            ))}
+                                    {isAdmin && (
+                                        <div className="glass-panel p-6 rounded-3xl shadow-lg">
+                                            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg"><UserCog className="text-primary"/> Petugas Scan</h3>
+                                            <form onSubmit={addScannerUser} className="flex gap-2 mb-4">
+                                                <input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none" placeholder="Nama" value={newScannerName} onChange={e => setNewScannerName(e.target.value)} required />
+                                                <input className="w-28 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center font-mono outline-none" placeholder="PIN 6 Digit" value={newScannerPin} onChange={e => setNewScannerPin(e.target.value)} maxLength="6" required />
+                                                <button type="submit" className="bg-primary text-white p-3 rounded-xl hover:bg-indigo-700 transition shadow-md"><Plus size={20}/></button>
+                                            </form>
+                                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                {scannersList.map(s => (
+                                                    <div key={s.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                                                        <div><p className="font-bold text-gray-800 text-sm">{s.name}</p><p className="text-xs text-gray-400 font-mono">PIN: {s.pin}</p></div>
+                                                        <div className="flex gap-1"><button onClick={() => resetScannerPin(s.id, s.name)} className="bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100" title="Reset PIN"><KeyRound size={14}/></button><button onClick={() => deleteScannerUser(s.id)} className="bg-red-50 text-red-500 p-2 rounded-lg hover:bg-red-100" title="Hapus"><Trash2 size={14}/></button></div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
-                                    <div className="glass-panel p-6 rounded-3xl shadow-lg">
-                                        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg"><Users className="text-secondary"/> Peserta</h3>
+                                    <div className={`glass-panel p-6 rounded-3xl shadow-lg ${!isAdmin ? 'md:col-span-2' : ''}`}>
+                                        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg"><Users className="text-secondary"/> Kelola Peserta</h3>
                                         {/* MODIFIED: Add manual participant with class and category */}
                                         <form onSubmit={addParticipant} className="flex flex-col gap-2 mb-4">
                                             <div className="flex gap-2">
@@ -1133,14 +982,14 @@
                                         <button onClick={handleExportPDF} className="bg-red-100 text-red-700 hover:bg-red-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><FileText size={20}/> PDF Laporan</button>
                                         
                                         <button onClick={resetAttendance} className="bg-orange-100 text-orange-700 hover:bg-orange-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><RefreshCw size={20}/> Reset Hadir</button>
-                                        <button onClick={deleteAllData} className="bg-rose-100 text-rose-700 hover:bg-rose-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><AlertTriangle size={20}/> Hapus Semua</button>
+                                        {isAdmin && <button onClick={deleteAllData} className="bg-rose-100 text-rose-700 hover:bg-rose-200 p-3 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition"><AlertTriangle size={20}/> Hapus Semua</button>}
                                     </div>
                                     {importing && <p className="text-center text-primary font-bold text-xs mt-3 animate-pulse">{importProgress}</p>}
                                 </div>
                             </div>
                         )}
 
-                        {view === 'scanner' && <ScannerView scanInput={scanInput} setScanInput={setScanInput} handleCheckIn={handleCheckIn} scanStatus={scanStatus} scannedName={scannedName} isSessionOpen={isSessionOpen} isAdmin={isAdmin} isScanner={isScanner} />}
+                        {view === 'scanner' && <ScannerView scanInput={scanInput} setScanInput={setScanInput} handleCheckIn={handleCheckIn} scanStatus={scanStatus} scannedName={scannedName} isSessionOpen={isSessionOpen} isAdmin={isAdmin} isManager={isManager} isScanner={isScanner} />}
                         
                         {view === 'my-qr' && (
                             <div className="flex flex-col items-center min-h-[70vh] p-6 max-w-md mx-auto animate-fade-in">
@@ -1237,7 +1086,7 @@
                     )}
 
                     <div className="md:hidden pb-24 no-print"></div>
-                    <div className="md:hidden no-print"><NavBar view={view} setView={setView} isAdmin={isAdmin} isScanner={isScanner} /></div>
+                    <div className="md:hidden no-print"><NavBar view={view} setView={setView} isAdmin={isAdmin} isManager={isManager} isScanner={isScanner} /></div>
                 </div>
             );
         }
