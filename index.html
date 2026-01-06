@@ -14,7 +14,15 @@
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <!-- PDF GENERATION LIBRARIES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        // SHIM: Memastikan autotable bisa menemukan jsPDF
+        if (typeof window.jspdf !== 'undefined') {
+            window.jsPDF = window.jspdf.jsPDF;
+        }
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
     <script>
@@ -914,32 +922,50 @@
 
             // --- FITUR EXPORT 2: PDF ---
             const handleExportPDF = () => {
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-                
-                doc.setFontSize(18);
-                doc.text("Laporan Kehadiran Sermon GSM GKPS", 14, 20);
-                doc.setFontSize(12);
-                doc.text(`Total Peserta: ${participants.length} | Hadir: ${participants.filter(p=>p.checkedIn).length}`, 14, 30);
-                
-                const tableData = participants.map(p => [
-                    p.regNum, 
-                    p.name, 
-                    p.kelas, 
-                    p.checkedIn ? "Hadir" : "Absen", 
-                    p.checkedIn ? formatTime(p.checkInTime) : "-"
-                ]);
+                try {
+                    // Pastikan jsPDF tersedia
+                    if (!window.jspdf || !window.jspdf.jsPDF) {
+                         alert("Library PDF belum siap. Silahkan refresh halaman.");
+                         return;
+                    }
 
-                doc.autoTable({
-                    head: [['ID', 'Nama', 'Kelas', 'Status', 'Waktu']],
-                    body: tableData,
-                    startY: 35,
-                    theme: 'grid',
-                    styles: { fontSize: 8 },
-                    headStyles: { fillColor: [79, 70, 229] }
-                });
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
+                    
+                    doc.setFontSize(18);
+                    doc.text("Laporan Kehadiran Sermon GSM GKPS", 14, 20);
+                    doc.setFontSize(12);
+                    doc.text(`Total Peserta: ${participants.length} | Hadir: ${participants.filter(p=>p.checkedIn).length}`, 14, 30);
+                    
+                    const tableData = participants.map(p => [
+                        p.regNum, 
+                        p.name, 
+                        p.kelas, 
+                        p.checkedIn ? "Hadir" : "Absen", 
+                        p.checkedIn ? formatTime(p.checkInTime) : "-"
+                    ]);
 
-                doc.save("Laporan_GSM_GKPS.pdf");
+                    // Cek plugin autoTable
+                    if (typeof doc.autoTable !== 'function') {
+                         alert("Plugin Tabel PDF gagal dimuat. Gunakan Export Excel sebagai alternatif.");
+                         console.error("autoTable is not a function. Shim might have failed.");
+                         return;
+                    }
+
+                    doc.autoTable({
+                        head: [['ID', 'Nama', 'Kelas', 'Status', 'Waktu']],
+                        body: tableData,
+                        startY: 35,
+                        theme: 'grid',
+                        styles: { fontSize: 8 },
+                        headStyles: { fillColor: [79, 70, 229] }
+                    });
+
+                    doc.save("Laporan_GSM_GKPS.pdf");
+                } catch (err) {
+                    console.error("PDF Error:", err);
+                    alert("Terjadi kesalahan saat membuat PDF: " + err.message);
+                }
             };
 
             // --- FITUR BARU: BACKUP SYSTEM (JSON) ---
@@ -1228,6 +1254,51 @@
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {view === 'live' && (
+                            <div className="pt-4 pb-24 max-w-2xl mx-auto animate-slide-up">
+                                <h1 className="text-4xl font-black text-center mb-8 text-white drop-shadow-md">Live Kehadiran</h1>
+                                <div className="grid grid-cols-2 gap-4 mb-8">
+                                    <div onClick={() => setLiveTab('present')} className={`glass-panel p-6 rounded-3xl text-center shadow-lg border-b-4 cursor-pointer transition transform hover:scale-105 active:scale-95 ${liveTab === 'present' ? 'border-b-emerald-500 bg-white' : 'border-b-transparent bg-white/50 opacity-60'}`}>
+                                        <span className="text-5xl font-black text-emerald-600 block mb-1">{participants.filter(p => p.checkedIn).length}</span>
+                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Hadir</span>
+                                    </div>
+                                    <div onClick={() => setLiveTab('absent')} className={`glass-panel p-6 rounded-3xl text-center shadow-lg border-b-4 cursor-pointer transition transform hover:scale-105 active:scale-95 ${liveTab === 'absent' ? 'border-b-rose-500 bg-white' : 'border-b-transparent bg-white/50 opacity-60'}`}>
+                                        <span className="text-5xl font-black text-rose-500 block mb-1">{participants.filter(p => !p.checkedIn).length}</span>
+                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Belum</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <h3 className="text-white font-bold text-lg mb-2 opacity-90 pl-2">{liveTab === 'present' ? 'Daftar Hadir' : 'Belum Hadir'} ({displayedParticipants.length})</h3>
+                                    {displayedParticipants.map((p, idx) => (
+                                        <div key={p.id} className="bg-white/90 backdrop-blur p-4 rounded-2xl shadow-sm flex justify-between items-center animate-fade-in hover:scale-[1.02] transition duration-300" style={{animationDelay: `${idx * 30}ms`}}>
+                                            <div className="flex items-center gap-4">
+                                                <div className={`p-2 rounded-full ${p.checkedIn ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                                    {p.checkedIn ? <CheckCircle size={20} /> : <XCircle size={20} />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-gray-800 text-sm leading-tight">{p.name}</p>
+                                                    <div className="flex gap-2 mt-1">
+                                                        <p className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1.5 rounded inline-block">{p.regNum}</p>
+                                                        <p className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 rounded inline-block">{p.kelas}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg ${p.checkedIn ? 'text-gray-600 bg-gray-100' : 'text-rose-400 bg-rose-50'}`}>
+                                                {formatTime(p.checkInTime)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    {displayedParticipants.length === 0 && (
+                                        <div className="text-center py-12 opacity-50">
+                                            <Sparkles className="w-12 h-12 text-white mx-auto mb-2 opacity-50" />
+                                            <p className="text-white">Tidak ada data untuk ditampilkan.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </main>
