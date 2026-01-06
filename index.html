@@ -27,6 +27,7 @@
                         'fade-in': 'fadeIn 0.5s ease-out',
                         'slide-up': 'slideUp 0.5s ease-out',
                         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'flash': 'flash 0.5s ease-out',
                     },
                     keyframes: {
                         blob: {
@@ -36,7 +37,8 @@
                             '100%': { transform: 'translate(0px, 0px) scale(1)' },
                         },
                         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
-                        slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } }
+                        slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                        flash: { '0%': { opacity: '0.8', backgroundColor: 'white' }, '100%': { opacity: '0', backgroundColor: 'transparent' } }
                     }
                 }
             }
@@ -70,13 +72,15 @@
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background: radial-gradient(circle, transparent 65%, rgba(0,0,0,0.8) 100%); pointer-events: none;
         }
+        .scan-flash {
+            position: absolute; inset: 0; pointer-events: none; z-index: 50;
+        }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         @media print {
-            body { background: white !important; background-image: none !important; color: black !important                    
-  ; }
+            body { background: white !important; background-image: none !important; color: black !important; }
             .glass-panel { background: white !important; border: 1px solid #ddd !important; box-shadow: none !important; }
             .no-print { display: none !important; }
             .page-break { page-break-inside: avoid; break-inside: avoid; }
@@ -137,6 +141,44 @@
             if (!timestamp) return '-';
             const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
             return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        };
+
+        // --- UTILITY: AUDIO FEEDBACK ---
+        // Menggunakan Web Audio API untuk notifikasi suara tanpa file eksternal
+        const playSound = (type) => {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (type === 'success') {
+                    // Bunyi "Ting" Ceria
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.5);
+                } else if (type === 'error') {
+                    // Bunyi "Buzzer" Rendah
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, ctx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(100, ctx.currentTime + 0.3);
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.3);
+                }
+            } catch (e) {
+                console.error("Audio error", e);
+            }
         };
 
         // --- KOMPONEN: ANALISA DETAIL PESERTA ---
@@ -450,6 +492,7 @@
             const videoRef = React.useRef(null);
             const scannerRef = React.useRef(null);
             const [cameraError, setCameraError] = React.useState(null);
+            const [flashActive, setFlashActive] = React.useState(false); // Visual feedback
             const lastScanTimeRef = React.useRef(0);
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -462,14 +505,30 @@
                         try {
                             scannerRef.current = new QrScanner(videoRef.current, (result) => {
                                 const now = Date.now();
-                                if (now - lastScanTimeRef.current > 1000) {
+                                if (now - lastScanTimeRef.current > 1500) { // Sedikit delay agar tidak spam
                                     lastScanTimeRef.current = now;
+                                    setFlashActive(true); // Trigger visual flash
+                                    setTimeout(() => setFlashActive(false), 500);
                                     handleCheckIn(typeof result === 'string' ? result : result.data);
                                 }
-                            }, { highlightScanRegion: true, highlightCodeOutline: true, preferredCamera: 'environment', maxScansPerSecond: 30, inversionMode: 'both',
+                            }, { 
+                                // --- MAXIMIZED SCANNER CONFIGURATION ---
+                                highlightScanRegion: false,
+                                highlightCodeOutline: true,
+                                preferredCamera: 'environment', 
+                                maxScansPerSecond: 30, // Max speed
+                                inversionMode: 'both', // Dark & Light mode
+                                returnDetailedScanResult: true, // Akurasi lebih tinggi
+                                // Hitung area scan agar FULL FRAME video (penting untuk laptop webcam)
                                 calculateScanRegion: (video) => {
-                                    const size = Math.round(Math.min(video.videoWidth, video.videoHeight) * 0.85);
-                                    return { x: Math.round((video.videoWidth - size) / 2), y: Math.round((video.videoHeight - size) / 2), width: size, height: size };
+                                    return {
+                                        x: 0,
+                                        y: 0,
+                                        width: video.videoWidth,
+                                        height: video.videoHeight,
+                                        downScaledWidth: video.videoWidth,
+                                        downScaledHeight: video.videoHeight,
+                                    };
                                 }
                             });
                             await scannerRef.current.start();
@@ -493,6 +552,7 @@
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-md mx-auto">
                     <h2 className="text-3xl font-extrabold mb-6 text-white tracking-tight drop-shadow-md">Scan Absensi</h2>
                     <div className="scan-container mb-8 shadow-2xl ring-4 ring-white/20">
+                        {flashActive && <div className="scan-flash animate-flash bg-white absolute inset-0 z-50"></div>}
                         {cameraError ? <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center bg-gray-900 z-10"><CameraOff size={48} className="mb-4 text-red-400" /><p className="font-bold text-red-300 mb-2">Kamera Bermasalah</p><button onClick={() => window.location.reload()} className="bg-primary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary transition">Coba Refresh</button></div> : <><video ref={videoRef} className="scan-video" playsInline muted autoPlay></video><div className="scan-overlay"></div><div className="absolute inset-0 pointer-events-none flex items-center justify-center"><div className="w-64 h-64 border-2 border-yellow-400/80 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"><div className="absolute top-0 left-0 w-6 h-6 border-l-4 border-t-4 border-yellow-500 rounded-tl-lg -ml-1 -mt-1"></div><div className="absolute top-0 right-0 w-6 h-6 border-r-4 border-t-4 border-yellow-500 rounded-tr-lg -mr-1 -mt-1"></div><div className="absolute bottom-0 left-0 w-6 h-6 border-l-4 border-b-4 border-yellow-500 rounded-bl-lg -ml-1 -mb-1"></div><div className="absolute bottom-0 right-0 w-6 h-6 border-r-4 border-b-4 border-yellow-500 rounded-br-lg -mr-1 -mb-1"></div></div><p className="absolute bottom-12 text-white text-xs bg-black/50 backdrop-blur px-3 py-1.5 rounded-full font-medium tracking-wide">ARAHKAN QR CODE KE KOTAK</p></div></>}
                     </div>
                     <div className="w-full mb-6 glass-panel p-2 rounded-2xl flex shadow-lg">
@@ -747,12 +807,23 @@
             const handleCheckIn = React.useCallback(async (regNumInput) => {
                 if (!isSessionOpen && !isAdmin && !isManager) { 
                     setScanStatus('closed'); 
+                    playSound('error');
                     return; 
                 }
                 const cleanInput = regNumInput.trim().toUpperCase();
                 const participant = participants.find(p => p.regNum.toUpperCase() === cleanInput);
-                if (!participant) { setScanStatus('error'); setScannedName(''); return; }
-                if (participant.checkedIn) { setScanStatus('duplicate'); setScannedName(participant.name); return; }
+                if (!participant) { 
+                    setScanStatus('error'); 
+                    setScannedName(''); 
+                    playSound('error'); // Audio Gagal
+                    return; 
+                }
+                if (participant.checkedIn) { 
+                    setScanStatus('duplicate'); 
+                    setScannedName(participant.name); 
+                    playSound('error'); // Audio Gagal/Duplikat
+                    return; 
+                }
                 
                 try {
                     // 1. Update status peserta (fitur lama)
@@ -769,11 +840,15 @@
                         dateString: new Date().toISOString()
                     });
 
-                    setScanStatus('success'); setScannedName(participant.name); setScanInput('');
+                    setScanStatus('success'); 
+                    setScannedName(participant.name); 
+                    setScanInput('');
+                    playSound('success'); // Audio Sukses
                     setTimeout(() => setScanStatus('idle'), 3000);
                 } catch (e) {
                     console.error("Check-in error:", e);
                     setScanStatus('error');
+                    playSound('error');
                 }
             }, [participants, isSessionOpen, isAdmin, isManager]);
 
