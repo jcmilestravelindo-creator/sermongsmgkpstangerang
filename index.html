@@ -1,5 +1,4 @@
-<!DOCTYPE html>                    
-  
+<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
@@ -145,7 +144,8 @@
                 overflow: visible !important;
             }
         }
-    </style>
+                        
+  </style>
 </head>
 <body class="text-gray-800 font-sans antialiased min-h-screen selection:bg-indigo-500 selection:text-white">
     <div id="root"></div>
@@ -539,57 +539,100 @@
             </nav>
         );
 
+        /* MODIFIED SCANNER COMPONENT STARTS HERE */
         const ScannerView = ({ scanInput, setScanInput, handleCheckIn, scanStatus, scannedName, isSessionOpen, isAdmin, isManager, isScanner }) => {
             const videoRef = React.useRef(null);
             const scannerRef = React.useRef(null);
             const [cameraError, setCameraError] = React.useState(null);
-            const [flashActive, setFlashActive] = React.useState(false); // Visual feedback
+            const [flashActive, setFlashActive] = React.useState(false); 
+            // Default ke environment (belakang), tapi bisa di-switch
+            const [facingMode, setFacingMode] = React.useState('environment'); 
             const lastScanTimeRef = React.useRef(0);
+            
+            // Deteksi sederhana apakah ini mobile atau laptop untuk optimalisasi awal
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+            // Fungsi Switch Kamera
+            const toggleCamera = () => {
+                setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+            };
 
             React.useEffect(() => {
                 if (!isSessionOpen && !isAdmin && !isManager) return;
                 
                 if (!isSecure) { setCameraError("Wajib HTTPS!"); return; }
+
+                // Bersihkan scanner lama sebelum membuat yang baru (penting saat switch kamera)
+                if (scannerRef.current) {
+                    scannerRef.current.stop();
+                    scannerRef.current.destroy();
+                    scannerRef.current = null;
+                }
+
                 const startScanner = async () => {
-                    if (videoRef.current && !scannerRef.current) {
+                    if (videoRef.current) {
                         try {
                             scannerRef.current = new QrScanner(videoRef.current, (result) => {
                                 const now = Date.now();
-                                if (now - lastScanTimeRef.current > 1500) { // Sedikit delay agar tidak spam
+                                if (now - lastScanTimeRef.current > 1500) { 
                                     lastScanTimeRef.current = now;
-                                    setFlashActive(true); // Trigger visual flash
+                                    setFlashActive(true); 
                                     setTimeout(() => setFlashActive(false), 500);
                                     handleCheckIn(typeof result === 'string' ? result : result.data);
                                 }
                             }, { 
-                                // --- MAXIMIZED SCANNER CONFIGURATION ---
+                                // --- UPGRADED CONFIGURATION ---
                                 highlightScanRegion: false,
                                 highlightCodeOutline: true,
-                                preferredCamera: 'environment', 
-                                maxScansPerSecond: 30, // Max speed
-                                inversionMode: 'both', // Dark & Light mode
-                                returnDetailedScanResult: true, // Akurasi lebih tinggi
-                                // Hitung area scan agar FULL FRAME video (penting untuk laptop webcam)
+                                // Dinamis berdasarkan state facingMode
+                                preferredCamera: facingMode, 
+                                // Laptop biasanya butuh frame rate lebih rendah agar fokus lebih tajam, mobile bisa lebih cepat
+                                maxScansPerSecond: isMobile ? 30 : 25, 
+                                inversionMode: 'both', 
+                                returnDetailedScanResult: true,
+                                // Kalkulasi area scan yang dioptimalkan untuk berbagai rasio aspek (Laptop/HP)
                                 calculateScanRegion: (video) => {
+                                    const smallerDimension = Math.min(video.videoWidth, video.videoHeight);
+                                    const scanRegionSize = Math.round(smallerDimension * 0.8); // 80% dari area terkecil
+                                    
+                                    // Logic center crop untuk akurasi laptop & HP
                                     return {
-                                        x: 0,
-                                        y: 0,
-                                        width: video.videoWidth,
-                                        height: video.videoHeight,
-                                        downScaledWidth: video.videoWidth,
-                                        downScaledHeight: video.videoHeight,
+                                        x: Math.round((video.videoWidth - scanRegionSize) / 2),
+                                        y: Math.round((video.videoHeight - scanRegionSize) / 2),
+                                        width: scanRegionSize,
+                                        height: scanRegionSize,
+                                        downScaledWidth: scanRegionSize, // Hindari downscaling agresif pada laptop
+                                        downScaledHeight: scanRegionSize,
                                     };
                                 }
                             });
                             await scannerRef.current.start();
                             setCameraError(null);
-                        } catch (e) { console.error(e); setCameraError("Gagal akses kamera."); }
+                        } catch (e) { 
+                            console.error(e); 
+                            // Jika environment gagal (misal di laptop tidak ada kamera belakang), fallback ke user
+                            if (facingMode === 'environment') {
+                                setFacingMode('user');
+                            } else {
+                                setCameraError("Gagal akses kamera."); 
+                            }
+                        }
                     }
                 };
-                setTimeout(startScanner, 100);
-                return () => { if (scannerRef.current) { scannerRef.current.stop(); scannerRef.current.destroy(); scannerRef.current = null; } };
-            }, [isSessionOpen, isAdmin, isManager, isScanner, handleCheckIn]);
+
+                // Beri sedikit delay agar DOM video siap sepenuhnya
+                const timer = setTimeout(startScanner, 300);
+                
+                return () => { 
+                    clearTimeout(timer);
+                    if (scannerRef.current) { 
+                        scannerRef.current.stop(); 
+                        scannerRef.current.destroy(); 
+                        scannerRef.current = null; 
+                    } 
+                };
+            }, [isSessionOpen, isAdmin, isManager, isScanner, handleCheckIn, facingMode]); // Re-run saat facingMode berubah
 
             if (!isSessionOpen && !isAdmin && !isManager) return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center animate-fade-in">
@@ -602,14 +645,65 @@
             return (
                 <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-md mx-auto">
                     <h2 className="text-3xl font-extrabold mb-6 text-white tracking-tight drop-shadow-md">Scan Absensi</h2>
-                    <div className="scan-container mb-8 shadow-2xl ring-4 ring-white/20">
+                    
+                    {/* Container Kamera */}
+                    <div className="scan-container mb-8 shadow-2xl ring-4 ring-white/20 relative group">
                         {flashActive && <div className="scan-flash animate-flash bg-white absolute inset-0 z-50"></div>}
-                        {cameraError ? <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center bg-gray-900 z-10"><CameraOff size={48} className="mb-4 text-red-400" /><p className="font-bold text-red-300 mb-2">Kamera Bermasalah</p><button onClick={() => window.location.reload()} className="bg-primary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary transition">Coba Refresh</button></div> : <><video ref={videoRef} className="scan-video" playsInline muted autoPlay></video><div className="scan-overlay"></div><div className="absolute inset-0 pointer-events-none flex items-center justify-center"><div className="w-64 h-64 border-2 border-yellow-400/80 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"><div className="absolute top-0 left-0 w-6 h-6 border-l-4 border-t-4 border-yellow-500 rounded-tl-lg -ml-1 -mt-1"></div><div className="absolute top-0 right-0 w-6 h-6 border-r-4 border-t-4 border-yellow-500 rounded-tr-lg -mr-1 -mt-1"></div><div className="absolute bottom-0 left-0 w-6 h-6 border-l-4 border-b-4 border-yellow-500 rounded-bl-lg -ml-1 -mb-1"></div><div className="absolute bottom-0 right-0 w-6 h-6 border-r-4 border-b-4 border-yellow-500 rounded-br-lg -mr-1 -mb-1"></div></div><p className="absolute bottom-12 text-white text-xs bg-black/50 backdrop-blur px-3 py-1.5 rounded-full font-medium tracking-wide">ARAHKAN QR CODE KE KOTAK</p></div></>}
+                        
+                        {/* Tombol Switch Kamera (Baru) */}
+                        <button 
+                            onClick={toggleCamera}
+                            className="absolute top-4 right-4 z-[60] bg-black/50 hover:bg-black/70 text-white p-2.5 rounded-full backdrop-blur-sm border border-white/20 transition-all active:scale-95 active:rotate-180"
+                            title="Ganti Kamera (Depan/Belakang)"
+                        >
+                            <RefreshCw size={20} />
+                        </button>
+
+                        {/* Indikator Mode Kamera */}
+                        <div className="absolute top-4 left-4 z-[60] bg-black/50 text-white px-3 py-1 rounded-full backdrop-blur-sm border border-white/20 text-[10px] font-bold uppercase tracking-wider">
+                            {facingMode === 'environment' ? 'Kamera Belakang' : 'Kamera Depan'}
+                        </div>
+
+                        {cameraError ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center bg-gray-900 z-10">
+                                <CameraOff size={48} className="mb-4 text-red-400" />
+                                <p className="font-bold text-red-300 mb-2">Kamera Bermasalah</p>
+                                <p className="text-xs text-gray-400 mb-4">{cameraError}</p>
+                                <button onClick={() => window.location.reload()} className="bg-primary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary transition">Coba Refresh</button>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Video Element dengan styling untuk cover/mirroring handling */}
+                                <video 
+                                    ref={videoRef} 
+                                    className={`scan-video ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} // Mirror effect untuk kamera depan agar natural
+                                    playsInline 
+                                    muted 
+                                    autoPlay
+                                ></video>
+                                <div className="scan-overlay"></div>
+                                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                    <div className="w-64 h-64 border-2 border-yellow-400/80 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
+                                        {/* Sudut-sudut frame */}
+                                        <div className="absolute top-0 left-0 w-6 h-6 border-l-4 border-t-4 border-yellow-500 rounded-tl-lg -ml-1 -mt-1"></div>
+                                        <div className="absolute top-0 right-0 w-6 h-6 border-r-4 border-t-4 border-yellow-500 rounded-tr-lg -mr-1 -mt-1"></div>
+                                        <div className="absolute bottom-0 left-0 w-6 h-6 border-l-4 border-b-4 border-yellow-500 rounded-bl-lg -ml-1 -mb-1"></div>
+                                        <div className="absolute bottom-0 right-0 w-6 h-6 border-r-4 border-b-4 border-yellow-500 rounded-br-lg -mr-1 -mb-1"></div>
+                                    </div>
+                                    <p className="absolute bottom-12 text-white text-xs bg-black/50 backdrop-blur px-3 py-1.5 rounded-full font-medium tracking-wide animate-pulse">
+                                        ARAHKAN QR CODE KE KOTAK
+                                    </p>
+                                </div>
+                            </>
+                        )}
                     </div>
+
                     <div className="w-full mb-6 glass-panel p-2 rounded-2xl flex shadow-lg">
                         <input type="text" placeholder="Input Manual ID..." value={scanInput} onChange={(e) => setScanInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCheckIn(scanInput); }} className="flex-1 bg-transparent p-3 outline-none text-gray-700 placeholder-gray-400 font-medium" />
                         <button onClick={() => handleCheckIn(scanInput)} className="bg-gradient-to-r from-primary to-secondary text-white px-6 rounded-xl font-bold shadow-md hover:shadow-lg transition active:scale-95">Check-In</button>
                     </div>
+
+                    {/* Feedback Status */}
                     {scanStatus === 'success' && <div className="w-full bg-green-100/90 backdrop-blur border border-green-400 text-green-800 px-4 py-4 rounded-2xl flex items-center gap-4 mb-4 animate-bounce-short shadow-lg"><div className="bg-green-500 p-2 rounded-full text-white"><CheckCircle className="w-6 h-6" /></div><div><p className="font-bold text-lg">Berhasil Masuk!</p><p className="text-sm opacity-80">{scannedName}</p></div></div>}
                     {scanStatus === 'duplicate' && <div className="w-full bg-yellow-100/90 backdrop-blur border border-yellow-400 text-yellow-800 px-4 py-4 rounded-2xl flex items-center gap-4 mb-4 shadow-lg"><div className="bg-yellow-500 p-2 rounded-full text-white"><AlertCircle className="w-6 h-6" /></div><div><p className="font-bold text-lg">Sudah Hadir</p><p className="text-sm opacity-80">{scannedName} sudah ada.</p></div></div>}
                     {scanStatus === 'error' && <div className="w-full bg-red-100/90 backdrop-blur border border-red-400 text-red-800 px-4 py-4 rounded-2xl flex items-center gap-4 mb-4 shadow-lg"><div className="bg-red-500 p-2 rounded-full text-white"><AlertTriangle className="w-6 h-6" /></div><div><p className="font-bold text-lg">Gagal</p><p className="text-sm opacity-80">Data tidak ditemukan.</p></div></div>}
@@ -617,6 +711,7 @@
                 </div>
             );
         };
+        /* MODIFIED SCANNER COMPONENT ENDS HERE */
 
         function App() {
             const [user, setUser] = React.useState(null);
@@ -1325,4 +1420,3 @@
     </script>
 </body>
 </html>
-
